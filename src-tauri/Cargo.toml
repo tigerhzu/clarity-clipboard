@@ -1,0 +1,36 @@
+[package]
+name = "clarity-clipboard"
+version = "0.5.0"
+description = "A local-first Windows clipboard workspace"
+authors = ["Tiger Hsu"]
+edition = "2021"
+
+[lib]
+name = "clarity_clipboard_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+clipboard-win = { version = "5.4.1", features = ["monitor"] }
+base64 = "0.22"
+hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+tempfile = "3"

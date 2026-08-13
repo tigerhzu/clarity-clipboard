@@ -1,0 +1,12 @@
+node_modules/
+dist/
+src-tauri/target/
+.idea/
+.vscode/
+*.log
+*.db
+data/images/*.png
+!data/images/.gitkeep
+phase*-*.png
+screenshot.png
+src-tauri\target\release\bundle\
