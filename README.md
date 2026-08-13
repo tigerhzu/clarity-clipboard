@@ -82,6 +82,14 @@ Classifier 與 Search Service 都是獨立 module，不在 React component 中�
 - 全域頂部導覽、精簡分類側欄與卡片式歷史項目
 - 最大化與 1180 × 760 預設視窗的響應式排列
 
+## 安裝（Windows x64）
+
+1. 到 [Releases](../../releases) 下載最新的 `Clarity Clipboard_*_x64-setup.exe`。
+2. 執行安裝檔，依指示完成安裝。
+3. 開啟 **Clarity Clipboard**；往後複製文字或圖片時，內容會只保存在這台電腦。
+
+Windows 11 已內建 WebView2。若 Windows Defender 顯示「未知發行者」，這是因為目前安裝檔尚未進行商業程式碼簽署；請只從此 GitHub Release 下載。
+
 ## 開發環境
 
 Tauri 在 Windows 需要 Node.js、Rust、WebView2，以及 Visual Studio Build Tools 的 **Desktop development with C++** 工作負載。Windows 11 已內建 WebView2。
