@@ -6,12 +6,12 @@
 
 在 [Releases](https://github.com/tigerhzu/clarity-clipboard/releases/latest) 優先下載 `Clarity-Setup.exe`。它包含正式 NSIS 安裝包，使用目前 Windows 使用者的安裝位置，安裝完成後開啟程式。
 
-如需標準安裝精靈，可選 `剪貼後台_1.0.9_x64-setup.exe`。它與快速安裝器內嵌的內容來自同一次 Tauri 建置。
+如需標準安裝精靈，可選 `Clarity-Clipboard-1.0.9-x64-setup.exe`。它與快速安裝器內嵌的內容來自同一次 Tauri 建置。
 
 | 檔案 | 用途 |
 | --- | --- |
 | `Clarity-Setup.exe` | 推薦的一鍵快速安裝器 |
-| `剪貼後台_1.0.9_x64-setup.exe` | 標準 NSIS 安裝精靈 |
+| `Clarity-Clipboard-1.0.9-x64-setup.exe` | 標準 NSIS 安裝精靈 |
 | `SHA256SUMS.txt` | 核對下載檔案完整性 |
 | `Source code (zip/tar.gz)` | GitHub 根據 tag 自動產生的原始碼封存 |
 
@@ -37,6 +37,8 @@ src-tauri/target/release/
     ├── 剪貼後台_1.0.9_x64-setup.exe
     └── Clarity-Setup.exe
 ```
+
+發行至 GitHub Release 時，標準安裝器改用英文下載檔名 `Clarity-Clipboard-1.0.9-x64-setup.exe`，檔案內容不變；本機建置產物仍保留上列中文檔名。
 
 一般使用者應下載安裝器，避免直接散發應用程式執行檔而遺漏安裝生命週期。快速安裝器使用 Windows .NET Framework C# 編譯器，將 NSIS 作為 assembly resource 內嵌；產生時會自動執行 `--verify-payload`。
 
