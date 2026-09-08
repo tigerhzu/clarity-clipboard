@@ -15,12 +15,28 @@ pub fn list_clipboard_items(
     query: Option<String>,
     filter: Option<String>,
     limit: Option<usize>,
+    offset: Option<usize>,
 ) -> Result<Vec<ClipboardItem>, String> {
     service
-        .search(
+        .search_page(
             query.as_deref().unwrap_or_default(),
             filter.as_deref().unwrap_or("ALL"),
             limit.unwrap_or(250),
+            offset.unwrap_or(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn count_clipboard_items(
+    service: State<'_, SearchService>,
+    query: Option<String>,
+    filter: Option<String>,
+) -> Result<usize, String> {
+    service
+        .count(
+            query.as_deref().unwrap_or_default(),
+            filter.as_deref().unwrap_or("ALL"),
         )
         .map_err(|error| error.to_string())
 }
@@ -74,6 +90,11 @@ pub fn update_clipboard_settings(
     let settings = service
         .update(settings)
         .map_err(|error| error.to_string())?;
-    cleanup.run_once().map_err(|error| error.to_string())?;
+    // Settings are already durable at this point. Cleanup is best-effort so a
+    // transient database/file issue does not tell the user that their settings
+    // were lost after they were successfully written.
+    if let Err(error) = cleanup.run_once() {
+        eprintln!("Could not apply retention cleanup after settings update: {error}");
+    }
     Ok(settings)
 }

@@ -13,45 +13,55 @@ pub fn start(service: ClipboardService, app_handle: AppHandle) {
     thread::Builder::new()
         .name("clipboard-monitor".into())
         .spawn(move || {
-            let mut monitor = match Monitor::new() {
-                Ok(monitor) => monitor,
-                Err(error) => {
-                    eprintln!("Could not start clipboard monitor: {error}");
-                    return;
-                }
-            };
-
             loop {
-                match monitor.recv() {
-                    Ok(true) => {
-                        let source = detect_foreground_source();
-                        if Bitmap.is_format_avail() {
-                            if let Some(bitmap) = read_bitmap_with_retry() {
-                                match service.ingest_bitmap_with_source(bitmap, source.clone()) {
+                let mut monitor = match Monitor::new() {
+                    Ok(monitor) => monitor,
+                    Err(error) => {
+                        eprintln!("Could not start clipboard monitor: {error}; retrying");
+                        thread::sleep(Duration::from_secs(2));
+                        continue;
+                    }
+                };
+
+                loop {
+                    match monitor.recv() {
+                        Ok(true) => {
+                            let source = detect_foreground_source();
+                            if Bitmap.is_format_avail() {
+                                if let Some(bitmap) = read_bitmap_with_retry() {
+                                    match service.ingest_bitmap_with_source(bitmap, source.clone())
+                                    {
+                                        Ok(Some(result)) => {
+                                            emit_change(&app_handle, result);
+                                            continue;
+                                        }
+                                        Ok(None) => continue,
+                                        Err(error) => {
+                                            // A malformed or unavailable bitmap should not
+                                            // hide a valid text representation on the same
+                                            // clipboard update.
+                                            eprintln!("Could not save clipboard image: {error}")
+                                        }
+                                    }
+                                }
+                            }
+
+                            if let Some(content) = read_text_with_retry() {
+                                match service.ingest_text_with_source(content, source) {
                                     Ok(Some(result)) => emit_change(&app_handle, result),
                                     Ok(None) => {}
                                     Err(error) => {
-                                        eprintln!("Could not save clipboard image: {error}")
+                                        eprintln!("Could not save clipboard text: {error}")
                                     }
                                 }
-                                continue;
                             }
                         }
-
-                        if let Some(content) = read_text_with_retry() {
-                            match service.ingest_text_with_source(content, source) {
-                                Ok(Some(result)) => emit_change(&app_handle, result),
-                                Ok(None) => {}
-                                Err(error) => {
-                                    eprintln!("Could not save clipboard text: {error}")
-                                }
-                            }
+                        Ok(false) => return,
+                        Err(error) => {
+                            eprintln!("Clipboard monitor stopped: {error}; retrying");
+                            thread::sleep(Duration::from_millis(500));
+                            break;
                         }
-                    }
-                    Ok(false) => break,
-                    Err(error) => {
-                        eprintln!("Clipboard monitor stopped: {error}");
-                        break;
                     }
                 }
             }

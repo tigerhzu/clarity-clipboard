@@ -1,132 +1,160 @@
-# Clarity Clipboard
+<p align="center">
+  <img src="docs/assets/logo.svg" width="88" alt="Clarity Clipboard Logo">
+</p>
 
-Windows 本機優先的 Clipboard Workspace。目前核心功能完成至 Phase 4，並已進入 Phase 5 UI / UX Polish：支援文字與圖片歷史、搜尋、來源程式、釘選、保留期限與隱私排除設定。
+<h1 align="center">剪貼後台 · Clarity Clipboard</h1>
 
-## 技術選型
+<p align="center"><strong>複製一次，隨時找回。把零散內容，整理成自己的工作記憶。</strong></p>
 
-- **Tauri 2 / Rust**：Windows 原生剪貼簿事件、之後的前景程式辨識、全域快捷鍵、Tray 與 Auto Start 都留在原生層。
-- **React / TypeScript / Vite**：UI 只負責呈現與操作狀態，不直接碰剪貼簿或資料庫。
-- **SQLite / rusqlite**：完全本機、單檔、低維運成本；WAL 模式讓背景寫入與 UI 讀取可以並行。
-- **clipboard-win**：直接使用 `AddClipboardFormatListener` 的 Windows 事件通知，不以高頻輪詢耗用資源。
+<p align="center">
+  <a href="https://github.com/tigerhzu/clarity-clipboard/releases/latest"><img alt="GitHub 最新版本" src="https://img.shields.io/github/v/release/tigerhzu/clarity-clipboard?style=flat-square&color=9b87f5"></a>
+  <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-0f172a?style=flat-square&logo=windows">
+  <img alt="Tauri 2 與 React 19" src="https://img.shields.io/badge/Tauri_2-React_19-8b5cf6?style=flat-square">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-64748b?style=flat-square"></a>
+</p>
 
-## 架構
+<p align="center">
+  <a href="https://github.com/tigerhzu/clarity-clipboard/releases/latest">下載安裝</a> ·
+  <a href="#三個工作區">功能介紹</a> ·
+  <a href="docs/ARCHITECTURE.md">架構與資料流</a> ·
+  <a href="docs/DEVELOPMENT.md">開發指南</a> ·
+  <a href="docs/CHANGELOG.md">更新紀錄</a>
+</p>
 
-```text
-Windows Clipboard
-       │ WM_CLIPBOARDUPDATE
-       ▼
-core/clipboard_monitor ────── core/source_detector
-       │ text / bitmap               │ foreground app / process / window title
-       ▼
-core/classifier ────────────── URL / Email / IP / Path / Code / JSON / Command
-       │
-       ▼
-services/clipboard_service ── SHA-256 / consecutive dedupe / classify / privacy
-       │
-       ├── services/image_service ── PNG / thumbnail / local files
-       ├── services/settings_service ── retention / excluded apps
-       └── services/cleanup_service ── expiry / pinned protection
-       │
-       ▼
-database/repository ───────── SQLite (WAL + FTS5)
-       │                             │
-       └──── clipboard://changed ────┤
-                                     ▼
-                          services/search_service
-                                     │ partial match / recent rank / filters
-                                     ▼
-                          Tauri command boundary
-                                     │
-                                     ▼
-                          React history + preview
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/hero-static.svg">
+  <img src="docs/assets/hero.svg" width="100%" alt="Clarity Clipboard：擷取、搜尋、收藏的本機工作流">
+</picture>
+
+Clarity 是 Windows 的本機剪貼簿工作區。文字、連結、程式碼與圖片在背景擷取，隨時用 `Alt + Z` 叫出搜尋；重要內容可以釘選、收進資料夾，或整理成可重複使用的個人片段。安裝後在 Windows 顯示為「剪貼後台」，視窗標題為「剪貼 · Clarity」。
+
+核心擷取、分類與搜尋在電腦本機完成，不需要帳號、AI API 或雲端服務。深色三欄介面以銀白文字與紫色焦點呈現內容，讓搜尋、選取與閱讀各有位置。
+
+![Clarity 三欄工作區：內容篩選、歷史清單與閱讀預覽，使用合成示範資料](docs/assets/app-preview.png)
+
+<p align="center"><sub>實際前端介面，使用隔離的合成示範資料。</sub></p>
+
+## 三個工作區
+
+| 工作區 | 用來做什麼 | 主要操作 |
+| --- | --- | --- |
+| 最近複製 | 找回稍早複製的內容 | 即時搜尋、內容與時間篩選、釘選、複製、確認刪除 |
+| 收藏資料夾 | 依工作或主題保存快照 | 拖曳收藏、選擇儲存目的地、重新命名、編輯內容、拖曳排序 |
+| 常用片段（個人資料庫） | 保存常用回覆、指令與片段 | 新增標題與內容、編輯、複製、從歷史加入、拖曳排序 |
+
+### 把找到內容的時間縮短
+
+- **自動分類**：文字、URL、Email、IP、檔案／網路路徑、程式碼、JSON、指令與圖片；JSON 和指令歸入介面的「程式碼」篩選。
+- **本機搜尋**：SQLite FTS5 全文索引加上部分字串比對，可搜尋內容、來源應用程式、類型與標籤。
+- **圖片閱讀**：保存 PNG 與縮圖，按需載入預覽，點圖片可展開符合視窗比例的放大檢視。
+- **背景常駐**：關閉視窗後隱藏至通知區，仍持續監聽剪貼簿；可用通知區選單結束程式。
+- **閱讀舒適度**：標準、舒適、大字三種文字大小，預設舒適；支援最小 900 × 600 視窗。
+- **保留策略**：7、14、30 天或永久保存；釘選歷史與收藏快照不受一般歷史到期清理影響。
+
+## 開始使用
+
+1. 前往 [GitHub Releases](https://github.com/tigerhzu/clarity-clipboard/releases/latest)，下載 `Clarity-Setup.exe`。
+2. 執行安裝程式。它會安裝至目前 Windows 使用者、建立捷徑，完成後開啟 Clarity。
+3. 複製一段文字或圖片，按 `Alt + Z` 開啟工作區。搜尋、雙擊項目即可再次複製。
+4. 在「設定 → 隱私」調整排除應用程式；在儲存設定選擇歷史保留天數。
+
+目前發行目標為 **Windows x64**。桌面介面使用 Microsoft Edge WebView2；已有執行環境時直接使用，缺少時安裝程式會透過網路下載補齊。未簽章的建置可能在 Windows 顯示未知發行者提示，下載來源與檔案雜湊請以本倉庫的 Release 為準。
+
+升級時直接執行新版安裝程式。快速安裝器會先要求正在執行的 Clarity 結束，再更新程式。本機資料目錄識別碼維持不變；如需自行備份，先從通知區完整結束 Clarity，再複製整個[資料目錄](#資料保存在你的電腦)。
+
+### 鍵盤操作
+
+| 快捷鍵 | 操作 |
+| --- | --- |
+| `Alt + Z` | 顯示／隱藏工作區，可在設定修改 |
+| `Ctrl + K` / `Ctrl + F` | 聚焦搜尋 |
+| `↑` / `↓` | 移動歷史清單選取 |
+| `Enter` | 複製選取內容（依目前焦點情境） |
+| `Ctrl + P` | 切換歷史項目釘選 |
+| `Delete` | 進入刪除確認 |
+| `Ctrl + N` | 新增個人片段 |
+| `Ctrl + ,` | 開啟設定 |
+
+## 架構一覽
+
+```mermaid
+flowchart LR
+    W[Windows 剪貼簿] --> M[事件監聽與來源辨識]
+    M --> P[隱私過濾與大小限制]
+    P --> C[分類與 SHA-256 去重]
+    C --> D[(SQLite 歷史與收藏)]
+    C --> I[本機 PNG 與縮圖]
+    D <--> S[Rust 服務層]
+    I <--> S
+    S <-->|Tauri commands / events| R[React 工作區]
+    R -->|複製指令| S
+    S -->|寫回內容| W
 ```
 
-原生層每個責任各自獨立：
+| 層級 | 技術 | 責任 |
+| --- | --- | --- |
+| 使用介面 | React 19、TypeScript 5.9、Lucide React、CSS | 搜尋、清單、預覽、收藏與設定 |
+| 前端建置 | Vite 7、pnpm | 開發伺服器、型別檢查、靜態資產 |
+| 桌面邊界 | Tauri 2、WebView2、global-shortcut | 視窗、通知區、全域快捷鍵、前後端命令 |
+| 本機核心 | Rust 2021、clipboard-win、windows-sys | 剪貼簿事件、來源辨識、分類、隱私檢查 |
+| 保存與搜尋 | rusqlite + bundled SQLite、WAL、FTS5 | 歷史、資料夾、個人片段、交易與索引 |
+| 圖片與識別 | image、SHA-256、UUID | PNG／縮圖、內容指紋、項目識別 |
+| Windows 發行 | Tauri NSIS、C# WinForms 快速安裝器 | 使用者層級安裝、升級與捷徑 |
 
-- `src-tauri/src/core`：作業系統事件與外部輸入。
-- `src-tauri/src/services`：流程、雜湊、去重與未來隱私規則。
-- `src-tauri/src/database`：migration、model、repository。
-- `src-tauri/src/commands`：UI 可呼叫的窄介面。
-- `src/components`：三欄畫面的可組合 UI。
-- `src/lib`：前端與 Tauri 的橋接。
+深入了解：[系統架構、資料表與隱私界線](docs/ARCHITECTURE.md)。
 
-Classifier 與 Search Service 都是獨立 module，不在 React component 中實作；未來可在不重寫 UI 的情況下加入 fuzzy 或 semantic search。
+## 資料保存在你的電腦
 
-## 已完成
+```text
+%APPDATA%\com.tigerhzu.clarityclipboard\
+├── clipboard.db              # 歷史、收藏資料夾、個人片段：同一個 SQLite 資料庫
+├── settings.json             # 保留天數、隱私、文字大小與快捷鍵
+└── images\                   # 歷史圖片 PNG
+    ├── thumbnails\           # 歷史縮圖
+    └── collections\          # 收藏的獨立圖片快照
+        └── thumbnails\
+```
 
-- Windows 剪貼簿事件監聽（非輪詢）
-- 純文字讀取與空內容忽略
-- SHA-256 content hash
-- 5 秒內連續相同內容只保留一筆，並更新為最新時間
-- SQLite schema、migration、WAL、索引
-- 最新優先的歷史清單
-- 新內容事件通知與畫面自動更新
-- 三欄暗色介面、空狀態、完整文字 preview
-- 資料目錄與 `images` 預留目錄
-- 規則式 `TEXT / URL / EMAIL / IP / FILE_PATH / NETWORK_PATH / CODE / JSON / COMMAND` 分類
-- 既有 Phase 1 文字資料啟動時自動重新分類
-- SQLite FTS5 全文索引、任意部分匹配後備與 exact/recent ranking
-- 內容分類與日期 Sidebar 篩選
-- 120ms debounce 的即時搜尋、零結果狀態與 `Ctrl + F`
-- URL domain、JSON 格式化、Code/Command syntax highlight 與結構化 Path/IP/Email preview
-- Windows 前景程式、process 與視窗標題來源辨識
-- Pin / Unpin、Copy、Delete 操作與畫面即時同步
-- 應用程式內部 Copy 事件抑制，避免複製舊項目時再新增重複紀錄
-- `↑` / `↓` 選取、`Enter` 複製、`Ctrl + P` 釘選、`Delete` 刪除
-- Windows Bitmap 剪貼簿擷取、PNG 本機儲存與圖片雜湊去重
-- 歷史列表圖片縮圖、右側原圖預覽與圖片重新複製
-- 圖片檔案與 SQLite 紀錄同步刪除，資料庫不保存圖片 binary
-- 7／30／90 天或永久保留設定，Pinned 項目永遠保留
-- 排除程式設定與常見密碼、Token、私鑰、信用卡內容過濾
-- Logitech 桌面工具風格的純黑介面、亮藍焦點與細線分區
-- 全域頂部導覽、精簡分類側欄與卡片式歷史項目
-- 最大化與 1180 × 760 預設視窗的響應式排列
+應用程式沒有帳號、遙測、雲端同步或外部 AI 呼叫。首頁徽章和 GitHub 下載頁屬於文件／發行服務，安裝 WebView2 可能連網；這些與剪貼簿內容處理分開。
 
-## 安裝（Windows x64）
+敏感內容過濾預設啟用，使用規則辨識常見 token、私鑰、帶標籤密碼與符合 Luhn 校驗的卡號；預設排除 1Password、Bitwarden、KeePass、KeePassXC 與遠端桌面。它不是完整防洩漏系統：未符合規則的文字或圖片仍可能被保存，手動建立片段也不經自動擷取過濾。資料庫與圖片沒有應用程式層加密，應以 Windows 帳戶與磁碟保護妥善管理。
 
-1. 到 [Releases](../../releases) 下載最新的 `Clarity Clipboard_*_x64-setup.exe`。
-2. 執行安裝檔，依指示完成安裝。
-3. 開啟 **Clarity Clipboard**；往後複製文字或圖片時，內容會只保存在這台電腦。
+<details>
+<summary><strong>開發與驗證快速入口</strong></summary>
 
-Windows 11 已內建 WebView2。若 Windows Defender 顯示「未知發行者」，這是因為目前安裝檔尚未進行商業程式碼簽署；請只從此 GitHub Release 下載。
-
-## 開發環境
-
-Tauri 在 Windows 需要 Node.js、Rust、WebView2，以及 Visual Studio Build Tools 的 **Desktop development with C++** 工作負載。Windows 11 已內建 WebView2。
+需準備 Node.js、pnpm、Rust MSVC 工具鏈、Visual Studio C++ Build Tools 與 WebView2。以 `package.json` 的 `packageManager` 和鎖定檔為準。
 
 ```powershell
-pnpm install
+pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-只驗證前端：
-
 ```powershell
 pnpm build
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo check --manifest-path src-tauri/Cargo.toml --locked
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+pnpm package:quick
 ```
 
-驗證 Rust：
+Playwright 介面測試使用隔離的假資料，不會讀取真實剪貼簿。完整環境、測試方式與建置指令見 [開發指南](docs/DEVELOPMENT.md)；產物與發行步驟見 [Release 指南](docs/RELEASE.md)。
 
-```powershell
-cd src-tauri
-cargo fmt --check
-cargo test
-```
+</details>
 
-## 本機資料
+## Tiger Hsu 工具集
 
-正式執行時，SQLite 與預留圖片目錄建立在 Tauri 的應用程式資料目錄：
+| 專案 | 使用場景 |
+| --- | --- |
+| [Freedom Wiki Assistant](https://github.com/tigerhzu/freedom-wiki-assistant) | Wiki 工作與知識整理輔助 |
+| [HaloPSA Extension](https://github.com/tigerhzu/halo-psa-extension) | HaloPSA 工作流程輔助 |
+| **Clarity Clipboard** | Windows 本機剪貼簿搜尋與收藏 |
 
-```text
-%APPDATA%/com.tigerhzu.clarityclipboard/
-    clipboard.db
-    settings.json
-    images/
-        thumbnails/
-```
+三個專案各自安裝與運作，沒有隱含的跨工具資料同步。
 
-資料不會傳送到任何雲端服務。
+整體資料流與技術比較見 [三個工具的架構全景](docs/TOOLKIT.md)。
 
-## 下一階段
+由 Tiger Hsu 維護，採 [MIT 授權](LICENSE)。設計規格見 [DESIGN.md](DESIGN.md)；問題與功能建議可提交至 [Issues](https://github.com/tigerhzu/clarity-clipboard/issues)。
 
-Phase 5 可加入 UI Polish、動畫、System Tray、開機啟動與 Installer；現有 Windows 原生層、Service 與 UI command boundary 可直接延伸。
+## 設計素材
+
+[Logo SVG](docs/assets/logo.svg) · [Logo PNG](docs/assets/logo.png) · [動態封面](docs/assets/hero.svg) · [靜態封面](docs/assets/hero-static.svg) · [架構圖 SVG](docs/assets/architecture.svg)。原始圖形與配色資料一起收錄在 Release 的品牌素材包；首頁動畫尊重減少動態效果偏好。

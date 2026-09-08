@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="488" viewBox="0 0 1280 488" role="img" aria-labelledby="title desc">
+<title id="title">Clarity Clipboard — Keep the useful. Find it when you need it.</title><desc id="desc">A local-first Windows clipboard and personal snippet library.</desc>
+<defs>
+ <radialGradient id="glow"><stop stop-color="#b9afff" stop-opacity=".23"/><stop offset="1" stop-color="#b9afff" stop-opacity="0"/></radialGradient>
+ <linearGradient id="edge"><stop stop-color="#b9afff"/><stop offset="1" stop-color="#b9afff" stop-opacity="0"/></linearGradient>
+ <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#a8b6ce" stroke-opacity=".065"/></pattern>
+ <clipPath id="bounds"><rect width="1280" height="488" rx="24"/></clipPath>
+</defs>
+<style>text{font-family:Inter,Segoe UI,Arial,sans-serif}.orbit{transform-origin:996px 225px;animation:orbit 70s linear infinite}.glow{animation:breathe 7s ease-in-out infinite}.pulse{animation:pulse 4s ease-in-out infinite}@keyframes orbit{to{transform:rotate(360deg)}}@keyframes breathe{50%{opacity:.55}}@keyframes pulse{50%{opacity:.25}}@media(prefers-reduced-motion:reduce){.orbit,.glow,.pulse{animation:none}}</style>
+<g clip-path="url(#bounds)">
+ <rect width="1280" height="488" fill="#0b1120"/><rect width="1280" height="488" fill="url(#grid)"/>
+ <ellipse class="glow" cx="995" cy="222" rx="350" ry="330" fill="url(#glow)"/>
+ <path d="M56 0H1224" stroke="url(#edge)" stroke-width="3"/>
+ <circle cx="62" cy="56" r="5" fill="#b9afff"/><text x="80" y="61" fill="#a7b8cf" font-size="12" letter-spacing="3">TIGER HZU / EVERYDAY TOOLS</text>
+ <text x="56" y="160" fill="#b9afff" font-size="13" letter-spacing="3">CAPTURE / FIND / REUSE</text>
+ <text x="52" y="237" fill="#f2f6ff" font-size="60" font-weight="700" letter-spacing="-3">Clarity Clipboard</text>
+ <text x="56" y="284" fill="#aebfd6" font-size="21">Keep the useful. Find it when you need it.</text>
+ <rect x="56" y="338" width="160" height="36" rx="18" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".13"/><text x="136" y="361" text-anchor="middle" fill="#c6d0df" font-size="13" font-weight="500">React + TypeScript</text><rect x="232" y="338" width="160" height="36" rx="18" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".13"/><text x="312" y="361" text-anchor="middle" fill="#c6d0df" font-size="13" font-weight="500">Tauri + Rust</text><rect x="408" y="338" width="160" height="36" rx="18" fill="#ffffff" fill-opacity=".045" stroke="#ffffff" stroke-opacity=".13"/><text x="488" y="361" text-anchor="middle" fill="#c6d0df" font-size="13" font-weight="500">SQLite + FTS5</text>
+ <circle cx="996" cy="225" r="145" fill="none" stroke="#b9afff" stroke-opacity=".18"/>
+ <circle class="orbit" cx="996" cy="225" r="176" fill="none" stroke="#b9afff" stroke-opacity=".28" stroke-dasharray="4 18"/>
+ <path d="M790 225H841M1151 225H1202M996 25V70M996 380V409" stroke="#b9afff" stroke-opacity=".28"/>
+ <circle class="pulse" cx="851" cy="225" r="5" fill="#b9afff"/>
+ <circle cx="1141" cy="225" r="5" fill="#b9afff" fill-opacity=".7"/>
+ <svg x="916" y="145" width="160" height="160" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect x="40" y="40" width="944" height="944" rx="240" fill="#08090d"/>
+  <rect x="196" y="204" width="444" height="514" rx="68" fill="#25273f" stroke="#8780ba" stroke-width="20"/>
+  <rect x="364" y="344" width="444" height="514" rx="68" fill="#d8d6ff"/>
+  <path d="M456 477h224M456 563h224M456 649h140" fill="none" stroke="#454465" stroke-width="30" stroke-linecap="round"/>
+  <path d="M795 171v72M759 207h72" stroke="#b3adff" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="877" cy="299" r="7" fill="#909abc"/>
+</svg>
+ <path d="M56 423H1224" stroke="#ffffff" stroke-opacity=".13"/>
+ <text x="56" y="457" fill="#94a8c5" font-size="12" letter-spacing="2">YOUR CLIPBOARD, WITH A MEMORY.</text>
+ <text x="1224" y="457" text-anchor="end" fill="#b9afff" font-size="12" letter-spacing="2">03 / BUILT FOR THE EVERYDAY</text>
+</g></svg>

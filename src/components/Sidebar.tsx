@@ -1,89 +1,289 @@
+import { useState } from "react";
 import {
-  Archive,
   CalendarDays,
-  Clock3,
   Code2,
+  Clock3,
   FileText,
   Folder,
+  FolderPlus,
   Image,
   Inbox,
   Link2,
   Mail,
   Network,
+  Pencil,
   Pin,
+  Plus,
   Settings,
+  Sparkles,
+  Trash2,
 } from "lucide-react";
-import type { ClipboardFilter } from "../types/clipboard";
+import type { DragEvent } from "react";
+import { clearItemDragPayload, CLIPBOARD_ITEM_DRAG_TYPE, readItemDragPayload } from "../lib/drag";
+import type { ClipboardFilter, Folder as FolderModel } from "../types/clipboard";
+import "./navigation.css";
+
+const contentFilters = [
+  { value: "ALL", label: "全部", icon: Inbox },
+  { value: "PINNED", label: "已釘選", icon: Pin },
+  { value: "TEXT", label: "文字", icon: FileText },
+  { value: "LINKS", label: "連結", icon: Link2 },
+  { value: "IMAGES", label: "圖片", icon: Image },
+  { value: "CODE", label: "程式碼", icon: Code2 },
+  { value: "PATHS", label: "路徑", icon: Folder },
+  { value: "IP", label: "IP", icon: Network },
+  { value: "EMAIL", label: "Email", icon: Mail },
+] as const;
+
+const timeFilters = ["TODAY", "YESTERDAY", "THIS_WEEK", "OLDER"] as const;
+const timeFilterLabels: Record<(typeof timeFilters)[number], string> = {
+  TODAY: "今天",
+  YESTERDAY: "昨天",
+  THIS_WEEK: "本週",
+  OLDER: "更早",
+};
+
+export type SidebarSelection =
+  | { kind: "history"; filter: ClipboardFilter }
+  | { kind: "folder"; folderId: string }
+  | { kind: "personal" };
 
 interface SidebarProps {
-  itemCount: number;
   activeFilter: ClipboardFilter;
+  activeView: SidebarSelection;
+  folders: FolderModel[];
+  pointerDropTarget: string | null;
   onFilterChange: (filter: ClipboardFilter) => void;
+  onSelectFolder: (folderId: string) => void;
+  onSelectPersonal: () => void;
+  onCreateFolder: () => void;
+  onRenameFolder: (folder: FolderModel) => void;
+  onDeleteFolder: (folder: FolderModel) => void;
+  onAddPersonal: () => void;
+  onDropClipboardItem: (target: "personal" | { folderId: string }, sourceItemId: string) => void;
   onOpenSettings: () => void;
 }
 
-const contentFilters: Array<{ id: ClipboardFilter; label: string; icon: typeof FileText }> = [
-  { id: "TEXT", label: "文字", icon: FileText },
-  { id: "LINKS", label: "連結", icon: Link2 },
-  { id: "IMAGES", label: "圖片", icon: Image },
-  { id: "CODE", label: "程式碼", icon: Code2 },
-  { id: "PATHS", label: "路徑", icon: Folder },
-  { id: "EMAIL", label: "Email", icon: Mail },
-  { id: "IP", label: "IP 位址", icon: Network },
-];
+function isInternalDrag(event: DragEvent<HTMLElement>): boolean {
+  try {
+    if (event.dataTransfer.types.includes(CLIPBOARD_ITEM_DRAG_TYPE)) return true;
+  } catch {
+    // Fall through to the same-document payload fallback.
+  }
+  return readItemDragPayload(event.dataTransfer)?.kind === "history";
+}
 
-const dateFilters: Array<{ id: ClipboardFilter; label: string; icon: typeof Clock3 }> = [
-  { id: "TODAY", label: "今天", icon: Clock3 },
-  { id: "YESTERDAY", label: "昨天", icon: CalendarDays },
-  { id: "THIS_WEEK", label: "本週", icon: CalendarDays },
-  { id: "OLDER", label: "更早", icon: Archive },
-];
+export function Sidebar({
+  activeFilter,
+  activeView,
+  folders,
+  pointerDropTarget,
+  onFilterChange,
+  onSelectFolder,
+  onSelectPersonal,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onAddPersonal,
+  onDropClipboardItem,
+  onOpenSettings,
+}: SidebarProps) {
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
-export function Sidebar({ itemCount, activeFilter, onFilterChange, onOpenSettings }: SidebarProps) {
-  const filterButton = (
-    id: ClipboardFilter,
-    label: string,
-    Icon: typeof Inbox,
-    count?: number,
-  ) => (
-    <button
-      className={`nav-item${activeFilter === id ? " active" : ""}`}
-      type="button"
-      aria-pressed={activeFilter === id}
-      onClick={() => onFilterChange(id)}
-      key={id}
-    >
-      <Icon size={16} />
-      <span>{label}</span>
-      {count !== undefined && <small>{count}</small>}
-    </button>
-  );
+  const isDropTarget = (target: string) => dropTarget === target || pointerDropTarget === target;
+
+  const clearDropTarget = (event: DragEvent<HTMLElement>, target: string) => {
+    const related = event.relatedTarget as Node | null;
+    if (!related || !event.currentTarget.contains(related)) {
+      if (dropTarget === target) setDropTarget(null);
+    }
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLElement>, target: string) => {
+    if (!isInternalDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDropTarget(target);
+  };
+
+  const handleDrop = (
+    event: DragEvent<HTMLElement>,
+    target: "personal" | { folderId: string },
+  ) => {
+    const payload = readItemDragPayload(event.dataTransfer);
+    if (!payload || payload.kind !== "history") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onDropClipboardItem(target, payload.id);
+    clearItemDragPayload();
+    setDropTarget(null);
+  };
+  const isRecent = activeView.kind === "history" && activeFilter !== "PINNED";
+  const isPinned = activeView.kind === "history" && activeFilter === "PINNED";
+  const isTimeFilter = timeFilters.includes(activeFilter as (typeof timeFilters)[number]);
+  const activeContentFilter = isTimeFilter ? "ALL" : activeFilter;
 
   return (
     <aside className="sidebar">
       <nav aria-label="剪貼簿分類">
-        <p className="nav-label first-label">瀏覽</p>
-        <div className="nav-group">
-          {filterButton("ALL", "全部", Inbox, itemCount)}
-          {filterButton("PINNED", "已釘選", Pin)}
-        </div>
+        <section className="nav-section" aria-label="工作空間">
+          <h2>工作空間</h2>
+          <div className="nav-group">
+            <button
+              className={`nav-item${isRecent ? " active" : ""}`}
+              type="button"
+              aria-current={isRecent ? "page" : undefined}
+              onClick={() => onFilterChange("ALL")}
+              title="瀏覽全部剪貼簿記錄"
+            >
+              <Clock3 size={17} /><span>最近複製</span>
+            </button>
+            <button
+              className={`nav-item${isPinned ? " active" : ""}`}
+              type="button"
+              aria-current={isPinned ? "page" : undefined}
+              onClick={() => onFilterChange("PINNED")}
+              title="已釘選的剪貼簿內容"
+            >
+              <Pin size={17} /><span>已釘選</span>
+            </button>
+            <div
+              className={`nav-personal-row${activeView.kind === "personal" ? " active" : ""}${isDropTarget("personal") ? " drop-target" : ""}`}
+              data-clipboard-drop-target="personal"
+              onDragEnter={(event) => handleDragOver(event, "personal")}
+              onDragOver={(event) => handleDragOver(event, "personal")}
+              onDragLeave={(event) => clearDropTarget(event, "personal")}
+              onDrop={(event) => handleDrop(event, "personal")}
+            >
+              <button
+                className="nav-item personal-nav-item"
+                type="button"
+                aria-current={activeView.kind === "personal" ? "page" : undefined}
+                onClick={onSelectPersonal}
+                title="保存常用文字、連結與其他片段"
+              >
+                <Sparkles size={17} /><span>常用片段</span>
+              </button>
+              <button
+                type="button"
+                className="nav-mini-action personal-add-action"
+                onClick={onAddPersonal}
+                aria-label="新增常用片段"
+                title="新增常用片段"
+              ><Plus size={15} /></button>
+            </div>
+          </div>
+        </section>
 
-        <p className="nav-label">內容</p>
-        <div className="nav-group">
-          {contentFilters.map(({ id, label, icon }) => filterButton(id, label, icon))}
-        </div>
+        <section className="nav-section my-data-section" aria-label="收藏資料夾">
+          <div className="nav-section-heading">
+            <h2>收藏資料夾</h2>
+            <button
+              type="button"
+              className="nav-add-button"
+              onClick={onCreateFolder}
+              aria-label="新增資料夾"
+              title="新增資料夾"
+            >
+              <FolderPlus size={15} />
+            </button>
+          </div>
+          <div className="nav-group folder-group">
+            {folders.length === 0 && (
+              <button className="nav-empty" type="button" onClick={onCreateFolder}>
+                <Plus size={14} /><span>建立第一個資料夾</span>
+              </button>
+            )}
+            {folders.map((folder) => {
+              const targetKey = `folder:${folder.id}`;
+              const active = activeView.kind === "folder" && activeView.folderId === folder.id;
+              return (
+                <div
+                  className={`nav-folder-row${active ? " active" : ""}${isDropTarget(targetKey) ? " drop-target" : ""}`}
+                  data-clipboard-drop-target={targetKey}
+                  key={folder.id}
+                  onDragEnter={(event) => handleDragOver(event, targetKey)}
+                  onDragOver={(event) => handleDragOver(event, targetKey)}
+                  onDragLeave={(event) => clearDropTarget(event, targetKey)}
+                  onDrop={(event) => handleDrop(event, { folderId: folder.id })}
+                >
+                  <button
+                    className="nav-item folder-nav-item"
+                    type="button"
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => onSelectFolder(folder.id)}
+                    title={`${folder.name}（${folder.itemCount} 筆）`}
+                  >
+                    <Folder size={16} />
+                    <span title={folder.name}>{folder.name}</span>
+                    <em>{folder.itemCount}</em>
+                  </button>
+                  <div className="nav-folder-actions">
+                    <button
+                      type="button"
+                      className="nav-mini-action"
+                      onClick={() => onRenameFolder(folder)}
+                      aria-label={`重新命名${folder.name}`}
+                      title="重新命名"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="nav-mini-action danger"
+                      onClick={() => onDeleteFolder(folder)}
+                      aria-label={`刪除${folder.name}`}
+                      title="刪除資料夾"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-        <p className="nav-label">時間</p>
-        <div className="nav-group">
-          {dateFilters.map(({ id, label, icon }) => filterButton(id, label, icon))}
-        </div>
+        </section>
+
+        <section className="nav-section sidebar-filter-section" aria-label="剪貼簿分類">
+          <h2>分類</h2>
+          <div className="sidebar-category-list content-filters" aria-label="內容分類">
+            {contentFilters.map(({ value, label, icon: Icon }) => {
+              const active = activeView.kind === "history" && activeContentFilter === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={active}
+                  className={`sidebar-category-item${active ? " active" : ""}`}
+                  onClick={() => onFilterChange(value)}
+                >
+                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <label className="sidebar-time-filter">
+            <CalendarDays size={14} aria-hidden="true" />
+            <span>時間</span>
+            <select
+              aria-label="時間篩選"
+              value={isTimeFilter ? activeFilter : "ALL"}
+              onChange={(event) => onFilterChange(event.target.value as ClipboardFilter)}
+            >
+              <option value="ALL">全部時間</option>
+              {timeFilters.map((value) => <option key={value} value={value}>{timeFilterLabels[value]}</option>)}
+            </select>
+          </label>
+        </section>
       </nav>
 
-      <button className="settings-button" type="button" onClick={onOpenSettings}>
-        <Settings size={16} />
-        <span>設定</span>
-        <kbd>Ctrl ,</kbd>
-      </button>
+      <footer className="sidebar-footer">
+        <button className="settings-button" type="button" onClick={onOpenSettings} title="設定（Ctrl ,）">
+          <Settings size={16} /><span>設定</span><kbd>Ctrl ,</kbd>
+        </button>
+      </footer>
     </aside>
   );
 }

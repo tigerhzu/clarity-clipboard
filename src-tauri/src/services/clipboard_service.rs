@@ -24,6 +24,8 @@ use super::{
 
 const CONSECUTIVE_DUPLICATE_WINDOW_MS: i64 = 5_000;
 const INTERNAL_COPY_SUPPRESSION_WINDOW: Duration = Duration::from_secs(3);
+const MAX_TEXT_BYTES: usize = 4 * 1024 * 1024;
+const MAX_BITMAP_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClipboardServiceError {
@@ -86,7 +88,7 @@ impl ClipboardService {
         content: String,
         source: SourceContext,
     ) -> Result<Option<SaveResult>, ClipboardServiceError> {
-        if content.is_empty() {
+        if content.is_empty() || content.len() > MAX_TEXT_BYTES {
             return Ok(None);
         }
         if self.privacy_service.should_exclude_source(&source)?
@@ -127,6 +129,7 @@ impl ClipboardService {
         source: SourceContext,
     ) -> Result<Option<SaveResult>, ClipboardServiceError> {
         if bitmap.is_empty()
+            || bitmap.len() > MAX_BITMAP_BYTES
             || self.consume_internal_image_copy()?
             || self.privacy_service.should_exclude_source(&source)?
         {
@@ -186,6 +189,11 @@ impl ClipboardService {
 
     pub fn copy_item(&self, id: &str) -> Result<ClipboardItem, ClipboardServiceError> {
         let item = self.repository.get_by_id(id)?;
+        self.copy_item_content(&item)?;
+        Ok(item)
+    }
+
+    pub fn copy_item_content(&self, item: &ClipboardItem) -> Result<(), ClipboardServiceError> {
         if item.content_type == "IMAGE" {
             let path = item.file_path.as_deref().ok_or_else(|| {
                 ClipboardServiceError::Clipboard("image file path is missing".into())
@@ -205,7 +213,7 @@ impl ClipboardService {
                 let _ = self.consume_internal_image_copy();
                 return Err(error);
             }
-            return Ok(item);
+            return Ok(());
         }
 
         let content = item.content.as_deref().unwrap_or_default();
@@ -221,7 +229,7 @@ impl ClipboardService {
             let _ = self.consume_internal_copy(&hash);
             return Err(ClipboardServiceError::Clipboard(error.to_string()));
         }
-        Ok(item)
+        Ok(())
     }
 
     pub fn image_data_url(
@@ -230,6 +238,14 @@ impl ClipboardService {
         thumbnail: bool,
     ) -> Result<String, ClipboardServiceError> {
         let item = self.repository.get_by_id(id)?;
+        self.image_data_url_for_item(&item, thumbnail)
+    }
+
+    pub fn image_data_url_for_item(
+        &self,
+        item: &ClipboardItem,
+        thumbnail: bool,
+    ) -> Result<String, ClipboardServiceError> {
         if item.content_type != "IMAGE" {
             return Err(ClipboardServiceError::Clipboard(
                 "item is not an image".into(),
@@ -242,9 +258,9 @@ impl ClipboardService {
                     serde_json::from_str::<super::image_service::ImageMetadata>(value).ok()
                 })
                 .map(|metadata| metadata.thumbnail_path)
-                .or(item.file_path)
+                .or(item.file_path.clone())
         } else {
-            item.file_path
+            item.file_path.clone()
         }
         .ok_or_else(|| ClipboardServiceError::Clipboard("image file path is missing".into()))?;
         Ok(self.image_service.data_url(&path)?)

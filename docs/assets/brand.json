@@ -1,0 +1,15 @@
+{
+  "title": "Clarity Clipboard",
+  "subtitle": "Keep the useful. Find it when you need it.",
+  "description": "A local-first Windows clipboard and personal snippet library.",
+  "accent": "#b9afff",
+  "eyebrow": "CAPTURE / FIND / REUSE",
+  "chips": [
+    "React + TypeScript",
+    "Tauri + Rust",
+    "SQLite + FTS5"
+  ],
+  "footer": "YOUR CLIPBOARD, WITH A MEMORY.",
+  "number": "03",
+  "logoSource": "src-tauri/app-icon.svg"
+}

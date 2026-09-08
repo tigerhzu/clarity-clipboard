@@ -21,15 +21,36 @@ impl SearchService {
         Self { repository }
     }
 
+    #[cfg(test)]
     pub fn search(
         &self,
         query: &str,
         filter: &str,
         limit: usize,
     ) -> Result<Vec<ClipboardItem>, SearchServiceError> {
+        self.search_page(query, filter, limit, 0)
+    }
+
+    pub fn search_page(
+        &self,
+        query: &str,
+        filter: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<ClipboardItem>, SearchServiceError> {
+        let criteria = self.criteria(query, filter, limit, offset);
+        Ok(self.repository.search(&criteria)?)
+    }
+
+    pub fn count(&self, query: &str, filter: &str) -> Result<usize, SearchServiceError> {
+        let criteria = self.criteria(query, filter, 1, 0);
+        Ok(self.repository.count(&criteria)?)
+    }
+
+    fn criteria(&self, query: &str, filter: &str, limit: usize, offset: usize) -> SearchCriteria {
         let query = query.trim().to_lowercase();
         let (content_filter, start_ms, end_ms) = resolve_filter(filter);
-        let criteria = SearchCriteria {
+        SearchCriteria {
             like_pattern: format!("%{}%", escape_like(&query)),
             starts_with_pattern: format!("{}%", escape_like(&query)),
             fts_query: build_fts_query(&query),
@@ -38,8 +59,8 @@ impl SearchService {
             start_ms,
             end_ms,
             limit,
-        };
-        Ok(self.repository.search(&criteria)?)
+            offset,
+        }
     }
 }
 
@@ -161,5 +182,19 @@ mod tests {
 
         let results = search.search("AD", "ALL", 20).unwrap();
         assert_eq!(results[0].content.as_deref(), Some("AD"));
+    }
+
+    #[test]
+    fn count_and_pages_cover_more_than_the_initial_batch() {
+        let (_directory, clipboard, search) = services();
+        for index in 0..260 {
+            clipboard
+                .ingest_text(format!("clipboard item {index}"))
+                .unwrap();
+        }
+
+        assert_eq!(search.count("", "ALL").unwrap(), 260);
+        assert_eq!(search.search_page("", "ALL", 250, 0).unwrap().len(), 250);
+        assert_eq!(search.search_page("", "ALL", 250, 250).unwrap().len(), 10);
     }
 }

@@ -9,4 +9,23 @@ data/images/*.png
 !data/images/.gitkeep
 phase*-*.png
 screenshot.png
-src-tauri\target\release\bundle\
+
+# Private local state and generated verification output
+.codex/
+.claude/
+.memory/
+artifacts/
+.release/
+.env
+.env.*
+!.env.example
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/**
+!data/images/
+!data/images/.gitkeep
+*.pem
+*.key
+*.pfx

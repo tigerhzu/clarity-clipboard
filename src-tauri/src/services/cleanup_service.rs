@@ -1,6 +1,7 @@
 use std::{thread, time::Duration};
 
 use chrono::Utc;
+use tauri::{AppHandle, Emitter};
 
 use crate::database::repository::{ClipboardRepository, RepositoryError};
 
@@ -39,12 +40,24 @@ impl CleanupService {
         }
     }
 
-    pub fn start(self) {
+    pub fn start(self, app_handle: AppHandle) {
         thread::Builder::new()
             .name("clipboard-cleanup".into())
             .spawn(move || loop {
-                if let Err(error) = self.run_once() {
-                    eprintln!("Could not clean clipboard history: {error}");
+                match self.run_once() {
+                    Ok(removed) if removed > 0 => {
+                        let _ = app_handle.emit(
+                            "clipboard://changed",
+                            serde_json::json!({
+                                "kind": "cleanup",
+                                "removed": removed,
+                            }),
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("Could not clean clipboard history: {error}");
+                    }
                 }
                 thread::sleep(CLEANUP_INTERVAL);
             })
@@ -101,6 +114,8 @@ mod tests {
                 retention_days: Some(7),
                 excluded_apps: Vec::new(),
                 sensitive_filter_enabled: true,
+                text_scale: 120,
+                hotkey: "Alt+Z".into(),
             })
             .unwrap();
         let old_time = Utc::now().timestamp_millis() - 8 * 86_400_000;

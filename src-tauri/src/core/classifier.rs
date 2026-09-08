@@ -13,7 +13,7 @@ pub enum ContentType {
     FilePath,
     NetworkPath,
     Code,
-    #[allow(dead_code)] // Reserved for the Phase 4 image capture path.
+    #[allow(dead_code)]
     Image,
     Json,
     Command,

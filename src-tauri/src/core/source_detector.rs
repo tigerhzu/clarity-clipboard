@@ -105,7 +105,7 @@ fn friendly_app_name(process_name: &str) -> String {
         "keepass" | "keepassxc" => "KeePass".into(),
         "bitwarden" => "Bitwarden".into(),
         "mstsc" | "msrdc" => "Remote Desktop".into(),
-        "clarity-clipboard" => "Clarity Clipboard".into(),
+        "clarity-clipboard" => "剪貼後台".into(),
         _ => process_name
             .strip_suffix(".exe")
             .unwrap_or(process_name)

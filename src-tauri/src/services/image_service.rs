@@ -39,16 +39,23 @@ pub enum ImageServiceError {
 pub struct ImageService {
     images_directory: PathBuf,
     thumbnails_directory: PathBuf,
+    collection_images_directory: PathBuf,
+    collection_thumbnails_directory: PathBuf,
 }
 
 impl ImageService {
     pub fn initialize(directory: impl AsRef<Path>) -> Result<Self, ImageServiceError> {
         let images_directory = directory.as_ref().to_path_buf();
         let thumbnails_directory = images_directory.join("thumbnails");
+        let collection_images_directory = images_directory.join("collections");
+        let collection_thumbnails_directory = collection_images_directory.join("thumbnails");
         fs::create_dir_all(&thumbnails_directory)?;
+        fs::create_dir_all(&collection_thumbnails_directory)?;
         Ok(Self {
             images_directory,
             thumbnails_directory,
+            collection_images_directory,
+            collection_thumbnails_directory,
         })
     }
 
@@ -60,6 +67,28 @@ impl ImageService {
     pub fn bitmap_for_clipboard(&self, file_path: &str) -> Result<Vec<u8>, ImageServiceError> {
         let image = image::open(file_path)?;
         encode(&image, ImageFormat::Bmp)
+    }
+
+    pub fn clone_for_collection(
+        &self,
+        id: &str,
+        source_file_path: &str,
+    ) -> Result<StoredImage, ImageServiceError> {
+        let source_path = Path::new(source_file_path);
+        if !source_path.starts_with(&self.images_directory) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "image path is outside the managed directory",
+            )
+            .into());
+        }
+        let image = image::open(source_path)?;
+        self.store_image_in(
+            id,
+            image,
+            &self.collection_images_directory,
+            &self.collection_thumbnails_directory,
+        )
     }
 
     pub fn data_url(&self, file_path: &str) -> Result<String, ImageServiceError> {
@@ -89,6 +118,21 @@ impl ImageService {
     }
 
     fn store_image(&self, id: &str, image: DynamicImage) -> Result<StoredImage, ImageServiceError> {
+        self.store_image_in(
+            id,
+            image,
+            &self.images_directory,
+            &self.thumbnails_directory,
+        )
+    }
+
+    fn store_image_in(
+        &self,
+        id: &str,
+        image: DynamicImage,
+        images_directory: &Path,
+        thumbnails_directory: &Path,
+    ) -> Result<StoredImage, ImageServiceError> {
         let rgba = image.to_rgba8();
         let mut hasher = Sha256::new();
         hasher.update(image.width().to_le_bytes());
@@ -99,10 +143,15 @@ impl ImageService {
         let png = encode(&image, ImageFormat::Png)?;
         let thumbnail = image.thumbnail(320, 200);
         let thumbnail_png = encode(&thumbnail, ImageFormat::Png)?;
-        let file_path = self.images_directory.join(format!("{id}.png"));
-        let thumbnail_path = self.thumbnails_directory.join(format!("{id}.png"));
-        fs::write(&file_path, &png)?;
-        fs::write(&thumbnail_path, thumbnail_png)?;
+        let file_path = images_directory.join(format!("{id}.png"));
+        let thumbnail_path = thumbnails_directory.join(format!("{id}.png"));
+        if let Err(error) = fs::write(&file_path, &png) {
+            return Err(error.into());
+        }
+        if let Err(error) = fs::write(&thumbnail_path, thumbnail_png) {
+            let _ = fs::remove_file(&file_path);
+            return Err(error.into());
+        }
 
         let metadata = ImageMetadata {
             width: image.width(),

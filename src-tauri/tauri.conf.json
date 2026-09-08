@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Clarity Clipboard",
-  "version": "0.5.0",
+  "productName": "剪貼後台",
+  "version": "1.0.9",
   "identifier": "com.tigerhzu.clarityclipboard",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Clarity Clipboard",
+        "title": "剪貼 · Clarity",
         "width": 1180,
         "height": 760,
         "minWidth": 900,
@@ -22,15 +22,48 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
-        "backgroundColor": "#0b0e14"
+        "theme": "Dark",
+        "backgroundColor": "#08090d"
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/com.tigerhzu.clarityclipboard/images/**/*"]
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": "nsis"
+    "targets": "nsis",
+    "category": "Productivity",
+    "copyright": "著作權所有 © 2026 Tiger Hsu",
+    "publisher": "Tiger Hsu",
+    "shortDescription": "本機優先的 Windows 剪貼簿工作區",
+    "longDescription": "本機優先的 Windows 剪貼簿工作區，可搜尋、保護並重新使用複製的文字與圖片。",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "icon": [
+      "icons/icon.ico",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ],
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "languages": ["TradChinese"],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "startMenuFolder": "剪貼後台"
+      }
+    }
   }
 }

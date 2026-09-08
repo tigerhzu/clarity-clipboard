@@ -1,143 +1,168 @@
-import { useEffect, useState } from "react";
-import { Clock3, LoaderCircle, ShieldCheck, X } from "lucide-react";
-import {
-  getClipboardSettings,
-  updateClipboardSettings,
-} from "../lib/clipboard-api";
-import type { ClipboardSettings } from "../types/clipboard";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Check, Clock3, Keyboard, LoaderCircle, Monitor, RefreshCw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
+import { getClipboardSettings, updateClipboardSettings } from "../lib/clipboard-api";
+import type { ClipboardSettings, ClipboardTextScale } from "../types/clipboard";
+import { DEFAULT_GLOBAL_HOTKEY, formatHotkey, hotkeyFromKeyboardEvent } from "../lib/hotkey";
+import "./dialogs.css";
 
 interface SettingsDialogProps {
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (settings: ClipboardSettings) => void;
 }
-
+const sections = [
+  { id: "general", label: "一般", icon: SlidersHorizontal },
+  { id: "storage", label: "儲存", icon: Clock3 },
+  { id: "privacy", label: "隱私", icon: ShieldCheck },
+] as const;
+function serializeSettings(settings: ClipboardSettings) {
+  return JSON.stringify({ retentionDays: settings.retentionDays, sensitiveFilterEnabled: settings.sensitiveFilterEnabled,
+    excludedApps: settings.excludedApps, textScale: settings.textScale, hotkey: settings.hotkey });
+}
 export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
   const [settings, setSettings] = useState<ClipboardSettings | null>(null);
-  const [excludedApps, setExcludedApps] = useState("");
+  const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
+  const [excludedDraft, setExcludedDraft] = useState("");
+  const [activeSection, setActiveSection] = useState<(typeof sections)[number]["id"]>("general");
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [recordingHotkey, setRecordingHotkey] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialog = useRef<HTMLElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const continueButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(document.activeElement as HTMLElement | null);
 
-  useEffect(() => {
-    void getClipboardSettings()
-      .then((value) => {
-        setSettings(value);
-        setExcludedApps(value.excludedApps.join("\n"));
-      })
-      .catch(() => setError("無法讀取設定，請重新開啟視窗。"));
-  }, []);
-
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
-
-  const save = async () => {
-    if (!settings || saving) return;
-    setSaving(true);
-    setError(null);
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
     try {
-      await updateClipboardSettings({
-        ...settings,
-        excludedApps: excludedApps.split(/\r?\n/),
-      });
-      onSaved();
-      onClose();
-    } catch (cause) {
-      console.error(cause);
-      setError("設定儲存失敗，請再試一次。" );
-    } finally {
-      setSaving(false);
-    }
+      const value = await getClipboardSettings();
+      setSettings(value); setExcludedDraft(value.excludedApps.join("\n"));
+      setInitialSnapshot(serializeSettings(value));
+    } catch { setSettings(null); setError("無法讀取設定，請再試一次。"); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => closeButton.current?.focus());
+    const previous = returnFocus.current;
+    return () => { window.cancelAnimationFrame(frame); previous?.focus?.(); };
+  }, []);
+  useEffect(() => { if (confirmingClose) continueButton.current?.focus(); }, [confirmingClose]);
+  const dirty = useMemo(() => Boolean(settings && initialSnapshot && serializeSettings(settings) !== initialSnapshot), [initialSnapshot, settings]);
+  const requestClose = useCallback(() => {
+    if (saving) return;
+    if (confirmingClose) { setConfirmingClose(false); closeButton.current?.focus(); return; }
+    if (dirty) { setRecordingHotkey(false); setConfirmingClose(true); return; }
+    onClose();
+  }, [confirmingClose, dirty, onClose, saving]);
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    event.stopPropagation();
+    if (event.key === "Escape") { event.preventDefault(); requestClose(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>(
+      "button:not(:disabled):not([tabindex='-1']), select:not(:disabled), textarea:not(:disabled), input:not(:disabled)",
+    ) ?? []).filter((element) => element.getClientRects().length > 0 && !element.closest("fieldset:disabled"));
+    const first = focusable[0]; const last = focusable[focusable.length - 1];
+    if (!first) { event.preventDefault(); dialog.current?.focus(); }
+    else if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
-
+  const handleHotkeyKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!recordingHotkey || !settings) return;
+    if (event.key === "Tab") { setRecordingHotkey(false); return; }
+    event.preventDefault(); event.stopPropagation();
+    if (event.key === "Escape") { setRecordingHotkey(false); return; }
+    if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
+    const nextHotkey = hotkeyFromKeyboardEvent(event.nativeEvent);
+    if (!nextHotkey) { setError("請同時按下 Ctrl、Alt 或 Shift，再按一個按鍵。"); return; }
+    setSettings({ ...settings, hotkey: nextHotkey }); setRecordingHotkey(false); setError(null);
+  };
+  const save = async () => {
+    if (!settings || saving || !dirty) return;
+    if (settings.excludedApps.length > 100) { setActiveSection("privacy"); setError("最多可排除 100 個應用程式，請減少清單後再儲存。"); return; }
+    setSaving(true); setRecordingHotkey(false); setError(null); dialog.current?.focus();
+    try { const savedSettings = await updateClipboardSettings(settings); onSaved(savedSettings); onClose(); }
+    catch { setError("設定儲存失敗，變更仍保留在這裡，請再試一次。"); }
+    finally { setSaving(false); }
+  };
   return (
-    <div className="settings-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        className="settings-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header>
-          <div>
-            <span>CLARITY CLIPBOARD</span>
-            <h2 id="settings-title">設定</h2>
-          </div>
-          <button type="button" onClick={onClose} aria-label="關閉設定"><X size={17} /></button>
+    <div className="cc-modal-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+      <section ref={dialog} className="cc-modal cc-settings" role="dialog" aria-modal="true" aria-labelledby="settings-title"
+        aria-describedby="settings-description" aria-busy={loading || saving} tabIndex={-1} onKeyDown={handleDialogKeyDown}>
+        <header className="cc-modal-header">
+          <div><span className="cc-modal-eyebrow">你的工作空間</span><h2 id="settings-title">{confirmingClose ? "捨棄變更？" : "設定"}</h2></div>
+          <button ref={closeButton} type="button" className="cc-dialog-close" onClick={requestClose} disabled={saving} aria-label={confirmingClose ? "繼續編輯" : "關閉設定"} title="關閉（Esc）"><X size={18} /></button>
         </header>
-
-        {!settings && !error && (
-          <div className="settings-loading"><LoaderCircle size={22} /><span>正在讀取設定…</span></div>
-        )}
-
-        {settings && (
-          <div className="settings-content">
-            <div className="settings-section-heading">
-              <Clock3 size={16} />
-              <div><strong>歷史保留期限</strong><span>釘選項目永遠不會被自動刪除。</span></div>
-            </div>
-            <select
-              value={settings.retentionDays ?? "forever"}
-              onChange={(event) => setSettings({
-                ...settings,
-                retentionDays: event.target.value === "forever"
-                  ? null
-                  : Number(event.target.value) as 7 | 30 | 90,
-              })}
-              aria-label="剪貼簿歷史保留期限"
-            >
-              <option value={7}>7 天</option>
-              <option value={30}>30 天</option>
-              <option value={90}>90 天</option>
-              <option value="forever">永久保留</option>
-            </select>
-
-            <div className="settings-divider" />
-
-            <div className="settings-section-heading">
-              <ShieldCheck size={16} />
-              <div><strong>隱私保護</strong><span>排除指定程式，並阻擋常見密碼、Token、私鑰與信用卡號。</span></div>
-            </div>
-            <label className="toggle-row">
-              <span><strong>敏感內容過濾</strong><small>建議保持開啟</small></span>
-              <input
-                type="checkbox"
-                checked={settings.sensitiveFilterEnabled}
-                onChange={(event) => setSettings({
-                  ...settings,
-                  sensitiveFilterEnabled: event.target.checked,
-                })}
-              />
-              <i aria-hidden="true" />
-            </label>
-
-            <label className="excluded-apps-field">
-              <span>排除程式</span>
-              <small>每行一個程式名稱，可填入 Bitwarden.exe 或 Bitwarden。</small>
-              <textarea
-                value={excludedApps}
-                onChange={(event) => setExcludedApps(event.target.value)}
-                spellCheck={false}
-                rows={6}
-              />
-            </label>
+        {confirmingClose ? (
+          <div className="cc-modal-body cc-discard-body"><p id="settings-description">尚未儲存的設定將會還原。你也可以回到設定繼續編輯。</p></div>
+        ) : <>
+          <p id="settings-description" className="cc-sr-only">調整顯示、快捷鍵、歷史保留期限與隱私。</p>
+          <div className="cc-settings-tabs" role="tablist" aria-label="設定分類">
+            {sections.map(({ id, label, icon: Icon }, index) => (
+              <button key={id} id={`settings-tab-${id}`} type="button" role="tab" aria-selected={activeSection === id}
+                aria-controls={`settings-panel-${id}`} tabIndex={activeSection === id ? 0 : -1} disabled={saving}
+                onClick={() => { setActiveSection(id); setRecordingHotkey(false); }} onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + sections.length) % sections.length;
+                  setActiveSection(sections[next].id); setRecordingHotkey(false);
+                  document.getElementById(`settings-tab-${sections[next].id}`)?.focus();
+                }}><Icon size={15} />{label}</button>
+            ))}
           </div>
-        )}
-
-        {error && <p className="settings-error">{error}</p>}
-
-        <footer>
-          <span>所有設定與內容只保存在這台電腦。</span>
-          <div>
-            <button type="button" onClick={onClose}>取消</button>
-            <button className="save-settings" type="button" disabled={!settings || saving} onClick={() => void save()}>
-              {saving ? "儲存中…" : "儲存設定"}
-            </button>
+          <div className="cc-modal-body cc-settings-body">
+            {loading && <div className="cc-dialog-loading" role="status"><LoaderCircle className="cc-dialog-spinner" size={22} /><span>正在讀取設定…</span></div>}
+            {!loading && settings && (
+              <fieldset className="cc-settings-fields" disabled={saving} role="tabpanel" id={`settings-panel-${activeSection}`} aria-labelledby={`settings-tab-${activeSection}`}>
+                {activeSection === "general" && <>
+                  <div className="cc-setting-heading"><Monitor size={18} /><div><h3>閱讀與顯示</h3><p>讓文字和操作介面保持舒適。</p></div></div>
+                  <label className="cc-setting-row"><span><strong>介面比例</strong><small>同時調整文字與控制項大小</small></span>
+                    <select value={settings.textScale} onChange={(event) => setSettings({ ...settings, textScale: Number(event.target.value) as ClipboardTextScale })}>
+                      <option value={100}>標準</option><option value={120}>舒適</option><option value={150}>大字</option>
+                    </select>
+                  </label>
+                  <div className="cc-setting-heading cc-setting-heading-spaced"><Keyboard size={18} /><div><h3>隨時叫出剪貼簿</h3><p>在任何應用程式中快速開啟或隱藏視窗。</p></div></div>
+                  <div className="cc-setting-row"><span id="hotkey-label"><strong>全域快捷鍵</strong><small>點擊後按下新的組合鍵</small></span>
+                    <div className="cc-hotkey-control"><button type="button" className="cc-hotkey-recorder" data-recording={recordingHotkey} onClick={() => { setRecordingHotkey(true); setError(null); }} onKeyDown={handleHotkeyKeyDown} onBlur={() => setRecordingHotkey(false)} aria-labelledby="hotkey-label" aria-describedby="hotkey-help">{recordingHotkey ? "請按下組合鍵…" : formatHotkey(settings.hotkey)}</button>
+                      <button type="button" className="cc-dialog-tertiary" disabled={settings.hotkey === DEFAULT_GLOBAL_HOTKEY} onClick={() => { setSettings({ ...settings, hotkey: DEFAULT_GLOBAL_HOTKEY }); setRecordingHotkey(false); setError(null); }}>重設</button></div>
+                  </div>
+                  <p id="hotkey-help" className="cc-field-help">預設 Alt + Z。錄製時按 Esc 取消；若快捷鍵衝突，請換一組再儲存。</p>
+                </>}
+                {activeSection === "storage" && <>
+                  <div className="cc-setting-heading"><Clock3 size={18} /><div><h3>讓歷史保持剛剛好</h3><p>自動清除不再需要的舊內容。</p></div></div>
+                  <label className="cc-setting-row"><span><strong>歷史保留期限</strong><small>僅清除超過期限的未釘選項目</small></span>
+                    <select value={settings.retentionDays ?? "forever"} onChange={(event) => setSettings({ ...settings, retentionDays: event.target.value === "forever" ? null : Number(event.target.value) as 7 | 14 | 30 })}>
+                      <option value={7}>7 天</option><option value={14}>14 天</option><option value={30}>30 天</option><option value="forever">永久保留</option>
+                    </select>
+                  </label>
+                  <div className="cc-setting-note"><Check size={16} /><p>釘選、資料夾與常用片段會保留，不受自動清除影響。</p></div>
+                </>}
+                {activeSection === "privacy" && <>
+                  <div className="cc-setting-heading"><ShieldCheck size={18} /><div><h3>決定哪些內容被記錄</h3><p>這些選項適用於之後複製的新內容。</p></div></div>
+                  <label className="cc-setting-row cc-toggle-row"><span><strong>過濾敏感內容</strong><small>略過可辨識的金鑰、密碼欄位及信用卡號</small></span><input type="checkbox" className="cc-switch" role="switch" checked={settings.sensitiveFilterEnabled} onChange={(event) => setSettings({ ...settings, sensitiveFilterEnabled: event.target.checked })} /></label>
+                  <label className="cc-dialog-field cc-excluded-field"><span>排除的應用程式 <small>{settings.excludedApps.length} / 100</small></span>
+                    <textarea value={excludedDraft} rows={4} spellCheck={false} placeholder={"例如：\nBitwarden.exe\n1Password.exe"} aria-describedby="excluded-apps-help" onChange={(event) => {
+                      const value = event.target.value; setExcludedDraft(value); const seen = new Set<string>();
+                      const excludedApps = value.split(/\r?\n/).map((entry) => entry.trim()).filter((entry) => {
+                        if (!entry || seen.has(entry.toLowerCase())) return false;
+                        seen.add(entry.toLowerCase()); return true;
+                      });
+                      setSettings({ ...settings, excludedApps });
+                    }} />
+                  </label>
+                  <p id="excluded-apps-help" className="cc-field-help">每行一個應用程式或執行檔名稱。從這些程式複製的內容不會加入歷史。</p>
+                </>}
+              </fieldset>
+            )}
+            {!loading && error && <div className="cc-dialog-error" role="alert"><p>{error}</p>{!settings && <button className="cc-dialog-secondary" type="button" onClick={() => void load()}><RefreshCw size={14} />重新讀取</button>}</div>}
           </div>
+        </>}
+        <footer className="cc-modal-footer">
+          {confirmingClose ? <><span /><div className="cc-dialog-actions"><button ref={continueButton} type="button" className="cc-dialog-secondary" onClick={() => { setConfirmingClose(false); closeButton.current?.focus(); }}>繼續編輯</button><button type="button" className="cc-dialog-danger" onClick={onClose}>捨棄變更</button></div></> : <>
+            <span className={dirty ? "cc-dialog-status is-dirty" : "cc-dialog-status"}>{saving ? "正在儲存…" : dirty ? "有未儲存的變更" : "僅儲存於這台電腦"}</span>
+            <div className="cc-dialog-actions"><button type="button" className="cc-dialog-secondary" onClick={requestClose} disabled={saving}>取消</button><button type="button" className="cc-dialog-primary" disabled={!settings || saving || !dirty} onClick={() => void save()}>{saving && <LoaderCircle size={14} className="cc-dialog-spinner" />}{saving ? "儲存中…" : "儲存設定"}</button></div>
+          </>}
         </footer>
       </section>
     </div>
