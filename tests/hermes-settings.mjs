@@ -8,6 +8,8 @@ import { createFixture, installTauriFixture } from "./fixtures.mjs";
 const require = createRequire(import.meta.url);
 const playwright = require(process.env.PLAYWRIGHT_MODULE || path.join(os.homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"));
 const prompt = await readFile(new URL("../src-tauri/src/integration/hermes-prompt.txt", import.meta.url), "utf8");
+// Textareas expose LF even when the Windows checkout uses CRLF.
+const displayedPrompt = prompt.replace(/\r\n?/g, "\n");
 const output = path.resolve(process.env.UI_SMOKE_OUTPUT || path.join(os.tmpdir(), "clipboard-hermes-ui"));
 await mkdir(output, { recursive: true });
 const browser = await playwright.chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {}) });
@@ -31,7 +33,7 @@ try {
       const toggle = page.getByRole("switch", { name: /允許 Hermes 讀寫/ });
       assert.equal(await toggle.isChecked(), false);
       const field = page.getByRole("textbox", { name: "Hermes 串接提示詞", exact: true });
-      assert.equal(await field.inputValue(), prompt);
+      assert.equal(await field.inputValue(), displayedPrompt);
       assert.equal(await field.getAttribute("readonly"), "");
       await toggle.check();
       await page.getByRole("button", { name: "取消", exact: true }).click();
@@ -50,7 +52,7 @@ try {
       await page.evaluate(() => window.__CLIPBOARD_TEST__.fail(["copy_hermes_prompt"]));
       await page.getByRole("button", { name: /已複製提示詞|複製 Hermes 串接提示詞/ }).click();
       await page.getByRole("alert").filter({ hasText: "提示詞複製失敗" }).waitFor();
-      assert.equal(await field.inputValue(), prompt);
+      assert.equal(await field.inputValue(), displayedPrompt);
       await page.evaluate(() => window.__CLIPBOARD_TEST__.fail([]));
       await page.getByRole("button", { name: "複製 Hermes 串接提示詞", exact: true }).click();
       await page.getByRole("button", { name: "已複製提示詞", exact: true }).waitFor();
