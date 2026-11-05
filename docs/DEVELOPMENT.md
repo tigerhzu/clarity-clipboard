@@ -70,6 +70,11 @@ npm install --prefix $qaTools playwright
 node (Join-Path $qaTools 'node_modules/playwright/cli.js') install chromium
 $env:PLAYWRIGHT_MODULE = Join-Path $qaTools 'node_modules/playwright'
 node tests/ui-smoke.mjs
+node tests/item-editor.mjs
+node tests/folder-order.mjs
+node tests/calendar.mjs
+node tests/workspace-layout.mjs
+node tests/hermes-settings.mjs
 ```
 
 腳本也會嘗試使用環境既有的 Playwright 或 Codex bundled runtime。可選環境變數：
@@ -84,6 +89,25 @@ node tests/ui-smoke.mjs
 `--functional-only` 只跑互動案例，`--visual-only` 只跑視覺情境。完整驗證包含搜尋、複製、釘選、分類、時間、資料夾、個人片段、非同步回應、設定保存與介面邊界。瀏覽器截圖由 Playwright `page.screenshot` 產生，檢查視窗溢出；不使用 PowerShell 桌面擷取。
 
 介面測試無法替代安裝後的 Windows 原生互動驗證。正式桌面驗證應額外確認剪貼事件、通知區、快捷鍵與 WebView2；測試資料應使用合成內容。
+
+單一執行個體驗證使用獨立識別碼、隱藏啟動視窗及獨立資料目錄，連續啟動後確認只剩一個程序、原視窗被喚回，以及結束後可重新啟動。八次冷啟動檢查初始化期間的競爭；測試只清理自己建立的程序與資料目錄，不安裝程式，也不擷取桌面。
+
+```powershell
+pnpm tauri build --debug --no-bundle --config tests/single-instance.config.json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/single-instance.ps1
+```
+
+上述設定只用於測試；交付安裝包仍使用原本識別碼的正式建置。
+
+Hermes 原生 MCP 驗證使用另一個獨立識別碼、隱藏視窗及合成文字／圖片。
+先建立測試執行檔，再使用 Python 3.10+ 執行 stdio 測試；測試不安裝程式或覆寫 Windows 剪貼簿。
+測試資料目錄若已存在，需先檢查再重跑。完成後必須用正式設定重新建置，避免散發測試識別碼的程式。
+
+```powershell
+pnpm tauri build --no-bundle --config tests/hermes-mcp.config.json
+python tests/hermes-mcp.py src-tauri/target/release/clarity-clipboard.exe
+pnpm tauri build
+```
 
 ## 正式建置
 

@@ -122,14 +122,23 @@ kbd {
 }
 
 .app-frame {
+  position: relative;
   --text-scale:1;
   display:grid;
   grid-template-columns:196px minmax(300px,.88fr) minmax(340px,1.12fr);
   grid-template-rows:84px minmax(0,1fr);
   height:100%;
-  min-width:760px;
+  min-width:820px;
   font-size:var(--font-md);
 }
+
+.workspace-divider { position: relative; z-index: 4; align-self: stretch; justify-self: end; width: 10px; transform: translateX(50%); cursor: col-resize; touch-action: none; user-select: none; outline-offset: -3px; }
+.workspace-divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: var(--line); transition: background-color 120ms; }
+.workspace-divider:hover::after, .workspace-divider:focus-visible::after, .workspace-divider.resizing::after { background: var(--accent); }
+.divider-sidebar { grid-column: 1; grid-row: 1 / -1; }
+.divider-history { grid-column: 2; grid-row: 2 / -1; }
+.has-calendar .divider-history { grid-row: 3 / -1; }
+.app-frame[data-resizing], .app-frame[data-resizing] * { cursor: col-resize !important; user-select: none !important; }
 
 .app-frame[data-text-scale="120"] {
   --text-scale:1.2;

@@ -2,6 +2,13 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ClipboardDay {
+    pub date: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ClipboardItem {
     pub id: String,
     pub content: Option<String>,

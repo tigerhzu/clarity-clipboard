@@ -1,0 +1,38 @@
+.calendar-bar { position: relative; z-index: 5; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 9px 24px; border-bottom: 1px solid var(--line); background: var(--surface); font-size: var(--font-sm); }
+.calendar-caption { display: flex; align-items: center; gap: 7px; color: var(--muted); white-space: nowrap; }
+.calendar-presets { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
+.calendar-presets button, .calendar-trigger { min-height: 28px; padding: 4px 10px; border-radius: 6px; white-space: nowrap; color: var(--muted); }
+.calendar-presets button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+.calendar-trigger { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); }
+.calendar-trigger.active { color: var(--accent); border-color: var(--line-strong); }
+.calendar-bar button:hover { background: var(--surface-hover); color: var(--ink); }
+.calendar-scope { margin-left: auto; color: var(--muted); font-size: var(--font-xs); }
+.calendar-popover { position: absolute; top: calc(100% + 8px); left: 24px; width: 336px; max-height: calc(100vh - 158px); overflow-y: auto; padding: 18px; background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 16px 48px #0008; }
+.calendar-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 15px; }
+.calendar-heading h2 { margin: 0 0 5px; font-size: var(--font-lg); font-weight: 600; }
+.calendar-heading p { margin: 0; color: var(--muted); font-size: var(--font-xs); }
+.calendar-heading > button, .calendar-month button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 6px; color: var(--muted); }
+.calendar-month { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.calendar-month strong { font-size: var(--font-md); font-weight: 600; }
+.calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.calendar-weekdays { color: var(--muted); font-size: var(--font-xs); text-align: center; margin-bottom: 8px; }
+.calendar-day { position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; height: 36px; padding: 3px 0; border: 1px solid transparent; border-radius: 7px; color: var(--muted); font-size: var(--font-sm); font-variant-numeric: tabular-nums; }
+.calendar-day i { width: 3px; height: 3px; border-radius: 50%; background: transparent; }
+.calendar-day.has-activity { color: var(--accent-hover); background: var(--accent-soft); text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent); }
+.calendar-day.has-activity i, .calendar-summary > i { background: var(--accent); box-shadow: 0 0 7px var(--accent); }
+.calendar-day[aria-current="date"] { border-color: var(--line-strong); }
+.calendar-day.selected { color: var(--action-ink); background: var(--action-bg); text-shadow: none; border-color: var(--accent); }
+.calendar-day.selected i { background: var(--action-ink); box-shadow: none; }
+.calendar-day.selected:hover { color: var(--action-ink); background: var(--accent-hover); }
+.calendar-summary { display: flex; align-items: center; gap: 8px; min-height: 34px; margin-top: 8px; color: var(--muted); font-size: var(--font-xs); }
+.calendar-summary > i { width: 5px; height: 5px; border-radius: 50%; }
+.calendar-summary button { color: var(--accent); border-radius: 4px; }
+.calendar-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 10px; }
+.calendar-footer button { padding: 6px 8px; border-radius: 6px; color: var(--muted); font-size: var(--font-xs); }
+.calendar-footer button:last-child { color: var(--accent); }
+.app-frame.has-calendar { grid-template-rows: 84px auto minmax(0, 1fr); }
+.has-calendar > .calendar-bar { grid-column: 2 / 4; grid-row: 2; }
+.has-calendar .sidebar { grid-row: 1 / 4; }
+.has-calendar .history-panel, .has-calendar .preview-panel { grid-row: 3; }
+@media (max-width: 1060px) { .calendar-bar { padding-left: 18px; padding-right: 18px; gap: 8px; } .calendar-scope { display: none; } }
+@media (max-height: 650px) { .app-frame.has-calendar { grid-template-rows: 70px auto minmax(0, 1fr); } .calendar-popover { max-height: calc(100vh - 140px); } }

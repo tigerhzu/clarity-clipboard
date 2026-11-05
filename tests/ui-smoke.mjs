@@ -61,14 +61,20 @@ async function resetSearch(page) { await search(page).fill(""); await ready(page
 async function recent(page) { await page.getByRole("button", { name: /最近複製|全部內容/, exact: true }).first().click(); await resetSearch(page); }
 async function selectRow(page, id) { await row(page, id).click(); await eventually(page, (id) => document.getElementById(`clipboard-item-${id}`)?.getAttribute("aria-selected") === "true", id); }
 async function getState(page) { return page.evaluate(() => window.__CLIPBOARD_TEST__.state); }
+async function selectTime(page, value) {
+  await page.getByRole("combobox", { name: "時間篩選", exact: true }).click();
+  await page.locator(`[role='option'][data-value='${value}']`).click();
+}
 
 async function contentFiltersAvailable(page) {
   const filters = page.locator(".sidebar-filter-section");
   assert.deepEqual(await filters.getByRole("button").allTextContents(), ["全部", "已釘選", "文字", "連結", "圖片", "程式碼", "路徑", "IP", "Email"]);
   assert.equal(await filters.getByRole("combobox").count(), 1, "only time uses a dropdown");
-  assert.deepEqual(await filters.getByRole("combobox", { name: "時間篩選", exact: true }).locator("option").evaluateAll((options) => options.map((option) => [option.value, option.textContent])), [
+  await filters.getByRole("combobox", { name: "時間篩選", exact: true }).click();
+  assert.deepEqual(await page.locator(".time-filter-option").evaluateAll((options) => options.map((option) => [option.dataset.value, option.textContent])), [
     ["ALL", "全部時間"], ["TODAY", "今天"], ["YESTERDAY", "昨天"], ["THIS_WEEK", "本週"], ["OLDER", "更早"],
   ]);
+  await page.keyboard.press("Escape");
   const layout = await filters.locator("button, select").evaluateAll((elements) => elements.map((element) => {
     const rect = element.getBoundingClientRect();
     const section = element.closest(".sidebar-filter-section").getBoundingClientRect();
@@ -158,7 +164,7 @@ async function functional() {
         await button.click();
         await historyMatches(page, value, ids);
         assert.equal(await button.getAttribute("aria-pressed"), "true");
-        assert.equal(await filters.getByRole("combobox", { name: "時間篩選", exact: true }).inputValue(), "ALL");
+        assert.equal(await filters.getByRole("combobox", { name: "時間篩選", exact: true }).getAttribute("data-value"), "ALL");
       }
     });
     await check("time filter selects all content and clears on content change", async () => {
@@ -172,15 +178,15 @@ async function functional() {
             : value === "YESTERDAY" ? item.createdAt >= +today - 86400000 && item.createdAt < +today
               : value === "THIS_WEEK" ? item.createdAt >= +monday : item.createdAt < +monday).map((item) => item.id);
         }, value);
-        await time.selectOption(value);
+        await selectTime(page, value);
         await historyMatches(page, value, expected);
         assert.deepEqual(await filters.locator("button[aria-pressed='true']").allTextContents(), ["全部"]);
       }
       await filters.getByRole("button", { name: "Email", exact: true }).click();
       await historyMatches(page, "EMAIL", ["email-team"]);
-      assert.equal(await time.inputValue(), "ALL", "content selection resets the time selection");
-      await time.selectOption("TODAY");
-      await time.selectOption("ALL");
+      assert.equal(await time.getAttribute("data-value"), "ALL", "content selection resets the time selection");
+      await selectTime(page, "TODAY");
+      await selectTime(page, "ALL");
       await historyMatches(page, "ALL", (await getState(page)).history.map((item) => item.id));
       assert.deepEqual(await filters.locator("button[aria-pressed='true']").allTextContents(), ["全部"]);
       await recent(page);
@@ -207,7 +213,7 @@ async function functional() {
       let dialog = page.getByRole("dialog");
       await dialog.getByLabel("標題", { exact: true }).fill("測試用常用片段");
       await dialog.getByRole("textbox", { name: /^內容(?:\s|$)/ }).fill("這是測試建立的內容。\n第二行應完整保存。");
-      await dialog.getByRole("button", { name: /新增片段|新增資料/, exact: true }).click();
+      await dialog.getByRole("button", { name: /新增內容|新增資料/, exact: true }).click();
       await dialog.waitFor({ state: "hidden" });
       const item = (await getState(page)).personal.find((entry) => entry.title === "測試用常用片段");
       assert.ok(item, "create command persisted the item");
@@ -306,12 +312,13 @@ async function functional() {
       const dialog = page.getByRole("dialog", { name: "設定", exact: true });
       await dialog.getByRole("tab", { name: "隱私", exact: true }).click();
       await dialog.getByRole("switch", { name: /過濾敏感內容/ }).uncheck();
+      assert.equal(await dialog.getByText("1Password.exe", { exact: true }).count(), 1);
       await dialog.getByRole("textbox", { name: /排除的應用程式/ }).fill("Bitwarden.exe\n Synthetic.exe \nsynthetic.exe\n");
       await dialog.getByRole("button", { name: "儲存設定", exact: true }).click();
       await dialog.waitFor({ state: "hidden" });
       const settings = (await getState(page)).settings;
       assert.equal(settings.sensitiveFilterEnabled, false);
-      assert.deepEqual(settings.excludedApps, ["Bitwarden.exe", "Synthetic.exe"]);
+      assert.deepEqual(settings.excludedApps, ["1Password.exe", "Bitwarden.exe", "Synthetic.exe"]);
       assert.equal(settings.textScale, 150);
     });
     await check("clipboard event refreshes history", async () => {
@@ -400,8 +407,8 @@ async function visual() {
       await dialogPage.locator(".nav-folder-row").filter({ hasText: "工作收藏" }).hover();
       await dialogPage.getByRole("button", { name: "刪除工作收藏", exact: true }).click();
       await dialogPage.getByRole("alertdialog", { name: "刪除資料夾？", exact: true }).waitFor(); await screenshot(dialogPage, "folder-delete-150"); await dialogPage.keyboard.press("Escape");
-      await dialogPage.getByRole("button", { name: "新增片段", exact: true }).click();
-      const dialog = dialogPage.getByRole("dialog", { name: "新增片段", exact: true });
+      await dialogPage.getByRole("button", { name: "新增內容", exact: true }).click();
+      const dialog = dialogPage.getByRole("dialog", { name: "新增內容", exact: true });
       await dialog.getByLabel("標題", { exact: true }).fill("常用的專案回覆");
       await dialog.getByRole("textbox", { name: /^內容(?:\s|$)/ }).fill("收到，謝謝提供資料。\n我會整理好內容，再與您確認後續安排。");
       await screenshot(dialogPage, "snippet-editor-150");

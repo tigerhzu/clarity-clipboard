@@ -322,7 +322,8 @@ export function PreviewPane({
       <header className="preview-header">
         <span className="preview-eyebrow">內容預覽</span>
         <div className="preview-header-actions">
-          {mode === "history" ? <button className={`icon-button${item.isPinned ? " is-pinned" : ""}`} type="button" disabled={busy} onClick={() => onTogglePin?.(item.id)} aria-label={item.isPinned ? "取消釘選" : "釘選內容"} title={item.isPinned ? "取消釘選（Ctrl P）" : "釘選，保留此紀錄（Ctrl P）"}>{item.isPinned ? <PinOff size={16} /> : <Pin size={16} />}</button> : <button className="icon-button" type="button" disabled={busy} onClick={() => onEdit?.(item.id)} aria-label="編輯內容" title="編輯內容"><Pencil size={16} /></button>}
+          {mode === "history" ? <button className={`icon-button${item.isPinned ? " is-pinned" : ""}`} type="button" disabled={busy} onClick={() => onTogglePin?.(item.id)} aria-label={item.isPinned ? "取消釘選" : "釘選內容"} title={item.isPinned ? "取消釘選（Ctrl P）" : "釘選，保留此紀錄（Ctrl P）"}>{item.isPinned ? <PinOff size={16} /> : <Pin size={16} />}</button> : null}
+          {<button className="icon-button" type="button" disabled={busy} onClick={() => onEdit?.(item.id)} aria-label="編輯內容" title="編輯內容"><Pencil size={16} /></button>}
           <button className={`icon-button delete-action${deleteArmed ? " armed" : ""}`} type="button" disabled={busy} onClick={() => mode === "folder" ? onRemove?.(item.id) : onDelete?.(item.id)} aria-label={deleteArmed ? "再次按下以確認刪除" : mode === "folder" ? "從資料夾移除項目" : "刪除內容"} title={deleteArmed ? "再次按下以確認刪除" : "刪除（按兩次確認）"}>{mode === "folder" ? <FolderMinus size={16} /> : <Trash2 size={16} />}{deleteArmed && <span>確認刪除</span>}</button>
         </div>
       </header>

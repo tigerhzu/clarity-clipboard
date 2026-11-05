@@ -32,6 +32,95 @@ pub struct ClipboardRepository {
 }
 
 impl ClipboardRepository {
+    /// Aggregate the complete history, independently of the current page or category.
+    pub fn activity_days(
+        &self,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> RepositoryResult<Vec<super::models::ClipboardDay>> {
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT strftime('%Y-%m-%d', created_at / 1000.0, 'unixepoch', 'localtime') AS day, COUNT(*)
+             FROM clipboard_items WHERE created_at >= ?1 AND created_at < ?2
+             GROUP BY day ORDER BY day",
+        )?;
+        let days = statement
+            .query_map(params![start_ms, end_ms], |row| {
+                Ok(super::models::ClipboardDay {
+                    date: row.get(0)?,
+                    count: row.get(1)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(days)
+    }
+
+    /// Manual writes never deduplicate and preserve identity, provenance and order on edits.
+    pub fn save_manual_item(
+        &self,
+        storage: &str,
+        item: &ClipboardItem,
+        folder_id: Option<&str>,
+        creating: bool,
+    ) -> RepositoryResult<()> {
+        let (table, title_column) = match storage {
+            "history" => ("clipboard_items", "custom_name"),
+            "folder" => ("folder_items", "custom_name"),
+            "personal" => ("personal_items", "title"),
+            _ => return Err(RepositoryError::InvalidOrder),
+        };
+        let mut connection = self.open()?;
+        let transaction = connection.transaction()?;
+        if creating {
+            let extra_columns = if storage == "folder" {
+                ", folder_id, sort_order"
+            } else if storage == "personal" {
+                ", sort_order"
+            } else {
+                ""
+            };
+            let extra_values = if storage == "folder" {
+                ", ?6, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM folder_items WHERE folder_id = ?6)"
+            } else if storage == "personal" {
+                ", (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM personal_items)"
+            } else {
+                ""
+            };
+            let sql = format!("INSERT INTO {table} (id, {title_column}, content_type, content_hash, created_at, updated_at{extra_columns}) VALUES (?1, ?2, ?3, ?4, ?5, ?5{extra_values})");
+            if storage == "folder" {
+                transaction.execute(
+                    &sql,
+                    params![
+                        item.id,
+                        item.custom_name,
+                        item.content_type,
+                        item.content_hash,
+                        item.created_at,
+                        folder_id
+                    ],
+                )?;
+            } else {
+                transaction.execute(
+                    &sql,
+                    params![
+                        item.id,
+                        item.custom_name,
+                        item.content_type,
+                        item.content_hash,
+                        item.created_at
+                    ],
+                )?;
+            }
+        }
+        let changed = transaction.execute(&format!("UPDATE {table} SET {title_column} = ?1, content = ?2, content_type = ?3, content_hash = ?4, file_path = ?5, metadata = ?6, updated_at = ?7, is_pinned = ?8 WHERE id = ?9"),
+            params![item.custom_name, item.content, item.content_type, item.content_hash, item.file_path, item.metadata, item.updated_at, item.is_pinned, item.id])?;
+        if changed == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows.into());
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn initialize(database_path: impl AsRef<Path>) -> RepositoryResult<Self> {
         let database_path = database_path.as_ref().to_path_buf();
         if let Some(parent) = database_path.parent() {
@@ -87,6 +176,7 @@ impl ClipboardRepository {
                     SELECT item_id FROM clipboard_items_fts
                     WHERE clipboard_items_fts MATCH ?4
                 )
+                OR lower(COALESCE(i.custom_name, '')) LIKE ?2 ESCAPE '\'
                 OR lower(COALESCE(i.content, '')) LIKE ?2 ESCAPE '\'
                 OR lower(COALESCE(i.source_app, '')) LIKE ?2 ESCAPE '\'
                 OR lower(i.content_type) LIKE ?2 ESCAPE '\'
@@ -154,6 +244,7 @@ impl ClipboardRepository {
                     SELECT item_id FROM clipboard_items_fts
                     WHERE clipboard_items_fts MATCH ?4
                 )
+                OR lower(COALESCE(i.custom_name, '')) LIKE ?2 ESCAPE '\'
                 OR lower(COALESCE(i.content, '')) LIKE ?2 ESCAPE '\'
                 OR lower(COALESCE(i.source_app, '')) LIKE ?2 ESCAPE '\'
                 OR lower(i.content_type) LIKE ?2 ESCAPE '\'
@@ -295,8 +386,11 @@ impl ClipboardRepository {
 
         let latest = latest_item(&transaction)?;
         if let Some(latest) = latest {
-            let within_window =
-                item.created_at.saturating_sub(latest.created_at) <= dedupe_window_ms;
+            let within_window = item.created_at >= latest.created_at
+                && item.created_at.saturating_sub(latest.created_at) <= dedupe_window_ms
+                // A refresh must not erase the previous day's calendar entry at midnight.
+                && chrono::DateTime::from_timestamp_millis(item.created_at).map(|date| date.with_timezone(&chrono::Local).date_naive())
+                    == chrono::DateTime::from_timestamp_millis(latest.created_at).map(|date| date.with_timezone(&chrono::Local).date_naive());
             if latest.content_hash == item.content_hash && within_window {
                 transaction.execute(
                     "UPDATE clipboard_items SET created_at = ?1, updated_at = ?1, source_app = ?3, source_process = ?4, source_window = ?5 WHERE id = ?2",
@@ -366,6 +460,31 @@ impl ClipboardRepository {
             .query_map([], map_folder)
             .and_then(|rows| rows.collect::<Result<Vec<_>, _>>())?;
         Ok(folders)
+    }
+
+    pub fn reorder_folders(&self, folder_ids: &[String]) -> RepositoryResult<Vec<Folder>> {
+        let mut connection = self.open()?;
+        let transaction = connection.transaction()?;
+        let total: i64 =
+            transaction.query_row("SELECT COUNT(*) FROM folders", [], |row| row.get(0))?;
+        if usize::try_from(total).unwrap_or(0) != folder_ids.len() {
+            return Err(RepositoryError::InvalidOrder);
+        }
+        let mut seen = HashSet::with_capacity(folder_ids.len());
+        for (sort_order, id) in folder_ids.iter().enumerate() {
+            if !seen.insert(id) {
+                return Err(RepositoryError::InvalidOrder);
+            }
+            if transaction.execute(
+                "UPDATE folders SET sort_order = ?1 WHERE id = ?2",
+                params![sort_order as i64, id],
+            )? != 1
+            {
+                return Err(RepositoryError::InvalidOrder);
+            }
+        }
+        transaction.commit()?;
+        self.list_folders()
     }
 
     pub fn get_folder(&self, id: &str) -> RepositoryResult<Folder> {

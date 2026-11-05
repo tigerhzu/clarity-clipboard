@@ -38,6 +38,19 @@ pub enum LibraryServiceError {
 
 pub type LibraryServiceResult<T> = Result<T, LibraryServiceError>;
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualItemInput {
+    pub storage: String,
+    pub id: Option<String>,
+    pub folder_id: Option<String>,
+    pub title: String,
+    pub content: Option<String>,
+    pub content_type: String,
+    pub image_base64: Option<String>,
+    pub pinned: Option<bool>,
+}
+
 #[derive(Debug, Clone)]
 pub struct LibraryService {
     repository: ClipboardRepository,
@@ -45,6 +58,94 @@ pub struct LibraryService {
 }
 
 impl LibraryService {
+    pub fn save_manual_item(&self, input: ManualItemInput) -> LibraryServiceResult<ClipboardItem> {
+        let title = normalize_name(&input.title, true)?;
+        validate_content_type(&input.content_type, true)?;
+        let current = match (input.storage.as_str(), input.id.as_deref()) {
+            ("history", Some(id)) => Some(self.repository.get_by_id(id)?),
+            ("folder", Some(id)) => Some(self.repository.get_folder_item(id)?.as_clipboard_item()),
+            ("personal", Some(id)) => {
+                Some(self.repository.get_personal_item(id)?.as_clipboard_item())
+            }
+            ("history" | "personal", None) => None,
+            ("folder", None) => {
+                self.repository.get_folder(
+                    input
+                        .folder_id
+                        .as_deref()
+                        .ok_or(LibraryServiceError::EmptyFolderName)?,
+                )?;
+                None
+            }
+            _ => return Err(LibraryServiceError::UnsupportedContentType),
+        };
+        let timestamp = now();
+        let mut item = current.clone().unwrap_or_else(|| ClipboardItem {
+            id: Uuid::new_v4().to_string(),
+            content: None,
+            content_type: input.content_type.clone(),
+            content_hash: String::new(),
+            source_app: None,
+            source_process: None,
+            source_window: None,
+            created_at: timestamp,
+            updated_at: timestamp,
+            is_pinned: input.pinned.unwrap_or(false),
+            custom_name: None,
+            file_path: None,
+            metadata: None,
+            tags: None,
+        });
+        let mut uploaded = None;
+        if input.content_type == "IMAGE" {
+            if let Some(encoded) = input.image_base64.as_deref() {
+                let image = self
+                    .image_service
+                    .store_upload(encoded, input.storage != "history")?;
+                item.file_path = Some(image.file_path.clone());
+                item.metadata = Some(image.metadata.clone());
+                item.content_hash = image.content_hash.clone();
+                uploaded = Some(image);
+            } else if current
+                .as_ref()
+                .is_none_or(|old| old.content_type != "IMAGE")
+            {
+                return Err(LibraryServiceError::EmptyContent);
+            }
+            item.content = None;
+        } else {
+            let content = input
+                .content
+                .as_deref()
+                .ok_or(LibraryServiceError::EmptyContent)?;
+            validate_content(content)?;
+            item.content = Some(content.to_owned());
+            item.content_hash = hash_content(content);
+            item.file_path = None;
+            item.metadata = None;
+        }
+        item.custom_name = Some(title);
+        item.content_type = input.content_type;
+        item.updated_at = timestamp;
+        if let Err(error) = self.repository.save_manual_item(
+            &input.storage,
+            &item,
+            input.folder_id.as_deref(),
+            current.is_none(),
+        ) {
+            if let Some(image) = uploaded {
+                self.remove_snapshot_files(Some(&image.file_path), Some(&image.metadata));
+            }
+            return Err(error.into());
+        }
+        if let Some(old) = current {
+            if old.file_path != item.file_path {
+                self.remove_snapshot_files(old.file_path.as_deref(), old.metadata.as_deref());
+            }
+        }
+        Ok(item)
+    }
+
     pub fn new(repository: ClipboardRepository, image_service: ImageService) -> Self {
         Self {
             repository,
@@ -54,6 +155,10 @@ impl LibraryService {
 
     pub fn list_folders(&self) -> LibraryServiceResult<Vec<Folder>> {
         Ok(self.repository.list_folders()?)
+    }
+
+    pub fn reorder_folders(&self, folder_ids: &[String]) -> LibraryServiceResult<Vec<Folder>> {
+        Ok(self.repository.reorder_folders(folder_ids)?)
     }
 
     pub fn create_folder(&self, name: &str) -> LibraryServiceResult<Folder> {
@@ -456,6 +561,111 @@ fn suggested_title(item: &ClipboardItem) -> String {
 mod tests {
     use super::*;
     use crate::database::models::NewClipboardItem;
+
+    fn manual(storage: &str, folder_id: Option<String>) -> ManualItemInput {
+        ManualItemInput {
+            storage: storage.into(),
+            id: None,
+            folder_id,
+            title: "常用回覆".into(),
+            content: Some("原始內容".into()),
+            content_type: "TEXT".into(),
+            image_base64: None,
+            pinned: Some(true),
+        }
+    }
+
+    #[test]
+    fn manual_creation_edit_and_title_search_in_all_stores() {
+        let (directory, library, repository) = service();
+        let folder = library.create_folder("直接新增").unwrap();
+        for storage in ["history", "folder", "personal"] {
+            let created = library
+                .save_manual_item(manual(storage, Some(folder.id.clone())))
+                .unwrap();
+            let mut edit = manual(storage, None);
+            edit.id = Some(created.id.clone());
+            edit.title = "獨特標題".into();
+            edit.content = Some("新內容".into());
+            let updated = library.save_manual_item(edit).unwrap();
+            assert_eq!(updated.id, created.id);
+            assert_eq!(updated.created_at, created.created_at);
+            assert!(updated.is_pinned);
+            let reopened =
+                ClipboardRepository::initialize(directory.path().join("clipboard.db")).unwrap();
+            let stored = match storage {
+                "history" => reopened.get_by_id(&created.id).unwrap(),
+                "folder" => reopened
+                    .get_folder_item(&created.id)
+                    .unwrap()
+                    .as_clipboard_item(),
+                _ => reopened
+                    .get_personal_item(&created.id)
+                    .unwrap()
+                    .as_clipboard_item(),
+            };
+            assert_eq!(stored.content.as_deref(), Some("新內容"));
+            assert_eq!(stored.custom_name.as_deref(), Some("獨特標題"));
+        }
+        let criteria = crate::database::models::SearchCriteria {
+            query: "獨特標題".into(),
+            like_pattern: "%獨特標題%".into(),
+            starts_with_pattern: "獨特標題%".into(),
+            fts_query: "\"獨特標題\"".into(),
+            filter: "ALL".into(),
+            start_ms: None,
+            end_ms: None,
+            limit: 20,
+            offset: 0,
+        };
+        assert_eq!(repository.search(&criteria).unwrap().len(), 1);
+        assert_eq!(repository.count(&criteria).unwrap(), 1);
+    }
+
+    #[test]
+    fn manual_image_replacement_preserves_snapshots_and_failed_edits() {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
+        let (_directory, library, repository) = service();
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(20, 12, Rgba([1, 2, 3, 255])));
+        let mut encoded = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut encoded, ImageFormat::Png).unwrap();
+        let base64 = STANDARD.encode(encoded.into_inner());
+        for storage in ["history", "folder", "personal"] {
+            let folder = library.create_folder(storage).unwrap();
+            let mut input = manual(storage, Some(folder.id));
+            input.content_type = "IMAGE".into();
+            input.image_base64 = Some(base64.clone());
+            let first = library.save_manual_item(input).unwrap();
+            let snapshot = if storage == "history" {
+                Some(library.add_clipboard_item_to_personal(&first.id).unwrap())
+            } else {
+                None
+            };
+            let mut edit = manual(storage, None);
+            edit.id = Some(first.id.clone());
+            edit.content_type = "IMAGE".into();
+            edit.image_base64 = Some("invalid!".into());
+            assert!(library.save_manual_item(edit).is_err());
+            assert!(std::path::Path::new(first.file_path.as_ref().unwrap()).exists());
+            let mut edit = manual(storage, None);
+            edit.id = Some(first.id.clone());
+            edit.content_type = "IMAGE".into();
+            edit.image_base64 = Some(base64.clone());
+            let replaced = library.save_manual_item(edit).unwrap();
+            assert_ne!(first.file_path, replaced.file_path);
+            assert!(!std::path::Path::new(first.file_path.as_ref().unwrap()).exists());
+            assert!(std::path::Path::new(replaced.file_path.as_ref().unwrap()).exists());
+            if let Some(snapshot) = snapshot {
+                assert!(std::path::Path::new(snapshot.file_path.as_ref().unwrap()).exists());
+            }
+            let mut edit = manual(storage, None);
+            edit.id = Some(first.id.clone());
+            library.save_manual_item(edit).unwrap();
+            assert!(!std::path::Path::new(replaced.file_path.as_ref().unwrap()).exists());
+        }
+        assert_eq!(repository.list_recent(10).unwrap()[0].content_type, "TEXT");
+    }
     use crate::services::{
         cleanup_service::CleanupService,
         image_service::ImageService,
@@ -472,6 +682,62 @@ mod tests {
         let _privacy = PrivacyService::new(settings);
         let library = LibraryService::new(repository.clone(), image_service);
         (directory, library, repository)
+    }
+
+    #[test]
+    fn folder_order_persists_and_invalid_orders_roll_back() {
+        let (directory, library, _) = service();
+        let first = library.create_folder("第一個").unwrap();
+        let second = library.create_folder("第二個").unwrap();
+        let third = library.create_folder("第三個").unwrap();
+        let order = vec![third.id.clone(), first.id.clone(), second.id.clone()];
+        let reordered = library.reorder_folders(&order).unwrap();
+        assert_eq!(
+            reordered.iter().map(|f| f.id.clone()).collect::<Vec<_>>(),
+            order
+        );
+        assert_eq!(
+            reordered.iter().map(|f| f.sort_order).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        let reopened =
+            ClipboardRepository::initialize(directory.path().join("clipboard.db")).unwrap();
+        for invalid in [
+            vec![first.id.clone(), second.id.clone()],
+            vec![first.id.clone(), first.id.clone(), second.id.clone()],
+            vec![first.id.clone(), second.id.clone(), "missing".into()],
+            vec![
+                first.id.clone(),
+                second.id.clone(),
+                third.id.clone(),
+                "extra".into(),
+            ],
+        ] {
+            assert!(library.reorder_folders(&invalid).is_err());
+            assert_eq!(
+                reopened
+                    .list_folders()
+                    .unwrap()
+                    .iter()
+                    .map(|f| f.id.clone())
+                    .collect::<Vec<_>>(),
+                order
+            );
+        }
+        library.rename_folder(&first.id, "改名").unwrap();
+        assert_eq!(library.list_folders().unwrap()[1].id, first.id);
+        let fourth = library.create_folder("第四個").unwrap();
+        assert_eq!(library.list_folders().unwrap()[3].id, fourth.id);
+        library.delete_folder(&first.id).unwrap();
+        assert_eq!(
+            library
+                .list_folders()
+                .unwrap()
+                .iter()
+                .map(|f| f.id.clone())
+                .collect::<Vec<_>>(),
+            vec![third.id, second.id, fourth.id]
+        );
     }
 
     #[test]
@@ -564,6 +830,7 @@ mod tests {
                 sensitive_filter_enabled: true,
                 text_scale: 120,
                 hotkey: "Alt+Z".into(),
+                hermes_enabled: false,
             })
             .unwrap();
         let old_time = chrono::Utc::now().timestamp_millis() - 8 * 86_400_000;

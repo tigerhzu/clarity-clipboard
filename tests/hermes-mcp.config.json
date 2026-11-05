@@ -1,0 +1,7 @@
+{
+  "identifier": "com.tigerhzu.clarityclipboard.hermes-mcp-test",
+  "build": { "beforeBuildCommand": "" },
+  "app": {
+    "windows": [{ "label": "main", "title": "Clarity · Hermes MCP 測試", "visible": false }]
+  }
+}

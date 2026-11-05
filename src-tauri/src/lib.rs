@@ -1,6 +1,7 @@
 mod commands;
 mod core;
 mod database;
+pub mod integration;
 mod services;
 
 use database::repository::ClipboardRepository;
@@ -72,6 +73,14 @@ fn toggle_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    let Some(instance) =
+        core::single_instance::SingleInstance::acquire(&context.config().identifier)
+            .expect("could not initialize the single-instance gate")
+    else {
+        return;
+    };
     let mut builder = tauri::Builder::default();
     #[cfg(desktop)]
     {
@@ -98,7 +107,9 @@ pub fn run() {
     }
 
     builder
-        .setup(|app| {
+        .setup(move |app| {
+            #[cfg(windows)]
+            instance.listen(app.handle().clone())?;
             let data_directory = app.path().app_data_dir()?;
             let repository = ClipboardRepository::initialize(data_directory.join("clipboard.db"))?;
             let image_service = ImageService::initialize(data_directory.join("images"))?;
@@ -110,13 +121,22 @@ pub fn run() {
             let search_service = SearchService::new(repository.clone());
             let library_service = LibraryService::new(repository.clone(), image_service.clone());
             let cleanup_service =
-                CleanupService::new(repository, image_service, settings_service.clone());
+                CleanupService::new(repository.clone(), image_service, settings_service.clone());
 
             if let Err(error) = clipboard_service.reclassify_existing_items() {
                 eprintln!("Could not reclassify existing clipboard items: {error}");
             }
 
             app.manage(clipboard_service.clone());
+            app.manage(integration::HermesIntegration::start(
+                &data_directory,
+                repository,
+                clipboard_service.clone(),
+                search_service.clone(),
+                library_service.clone(),
+                settings_service.clone(),
+                app.handle().clone(),
+            ));
             app.manage(search_service);
             app.manage(settings_service);
             app.manage(cleanup_service.clone());
@@ -161,8 +181,12 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            integration::get_hermes_integration,
+            integration::copy_hermes_prompt,
+            commands::library::save_manual_item,
             commands::clipboard::list_clipboard_items,
             commands::clipboard::count_clipboard_items,
+            commands::clipboard::list_clipboard_days,
             commands::clipboard::toggle_clipboard_pin,
             commands::clipboard::delete_clipboard_item,
             commands::clipboard::copy_clipboard_item,
@@ -170,6 +194,7 @@ pub fn run() {
             commands::clipboard::get_clipboard_settings,
             commands::clipboard::update_clipboard_settings,
             commands::library::list_folders,
+            commands::library::reorder_folders,
             commands::library::create_folder,
             commands::library::rename_folder,
             commands::library::delete_folder,
@@ -189,6 +214,6 @@ pub fn run() {
             commands::library::copy_personal_item,
             commands::library::get_personal_item_image,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running 剪貼後台");
 }

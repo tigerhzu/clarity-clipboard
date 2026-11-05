@@ -12,6 +12,9 @@ const DEFAULT_TEXT_SCALE: u16 = 120;
 const DEFAULT_HOTKEY: &str = "Alt+Z";
 const LEGACY_DEFAULT_TEXT_SCALE: u16 = 100;
 const LEGACY_DEFAULT_HOTKEY: &str = "Control+Alt+Space";
+const PROTECTED_EXCLUDED_APP: &str = "1Password.exe";
+const PROTECTED_EXCLUDED_KEY: &str = "1password";
+const MAX_EXCLUDED_APPS: usize = 100;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
@@ -22,6 +25,7 @@ pub struct AppSettings {
     pub sensitive_filter_enabled: bool,
     pub text_scale: u16,
     pub hotkey: String,
+    pub hermes_enabled: bool,
 }
 
 impl Default for AppSettings {
@@ -38,6 +42,7 @@ impl Default for AppSettings {
             sensitive_filter_enabled: true,
             text_scale: DEFAULT_TEXT_SCALE,
             hotkey: DEFAULT_HOTKEY.into(),
+            hermes_enabled: false,
         }
     }
 }
@@ -146,14 +151,20 @@ fn normalize(mut settings: AppSettings) -> AppSettings {
     };
 
     let mut seen = HashSet::new();
-    settings.excluded_apps = settings
-        .excluded_apps
-        .into_iter()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-        .filter(|value| seen.insert(value.to_lowercase()))
-        .take(100)
-        .collect();
+    seen.insert(PROTECTED_EXCLUDED_KEY.to_owned());
+    let mut normalized_excluded_apps = vec![PROTECTED_EXCLUDED_APP.to_owned()];
+    for raw_value in settings.excluded_apps {
+        let value = raw_value.trim().to_owned();
+        let key = excluded_app_key(&value);
+        if value.is_empty() || !seen.insert(key) {
+            continue;
+        }
+        if normalized_excluded_apps.len() >= MAX_EXCLUDED_APPS {
+            break;
+        }
+        normalized_excluded_apps.push(value);
+    }
+    settings.excluded_apps = normalized_excluded_apps;
     let is_legacy_default_profile = settings.text_scale == LEGACY_DEFAULT_TEXT_SCALE
         && settings
             .hotkey
@@ -179,6 +190,14 @@ fn normalize(mut settings: AppSettings) -> AppSettings {
     settings
 }
 
+fn excluded_app_key(value: &str) -> String {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized
+        .strip_suffix(".exe")
+        .unwrap_or(&normalized)
+        .to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,8 +206,13 @@ mod tests {
     fn uses_new_preferences_as_defaults() {
         let settings = AppSettings::default();
 
+        assert_eq!(
+            settings.excluded_apps.first().map(String::as_str),
+            Some(PROTECTED_EXCLUDED_APP)
+        );
         assert_eq!(settings.text_scale, DEFAULT_TEXT_SCALE);
         assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
+        assert!(!settings.hermes_enabled);
     }
 
     #[test]
@@ -203,11 +227,16 @@ mod tests {
                 sensitive_filter_enabled: false,
                 text_scale: 140,
                 hotkey: "Control+Alt+Space".into(),
+                hermes_enabled: true,
             })
             .unwrap();
 
         assert_eq!(updated.retention_days, Some(14));
-        assert_eq!(updated.excluded_apps, vec!["Bitwarden.exe"]);
+        assert!(updated.hermes_enabled);
+        assert_eq!(
+            updated.excluded_apps,
+            vec!["1Password.exe", "Bitwarden.exe"]
+        );
         assert_eq!(updated.text_scale, DEFAULT_TEXT_SCALE);
         assert_eq!(updated.hotkey, DEFAULT_HOTKEY);
         assert_eq!(
