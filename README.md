@@ -161,4 +161,4 @@ Playwright 介面測試使用隔離的假資料，不會讀取真實剪貼簿。
 
 ## 設計素材
 
-[Logo SVG](docs/assets/logo.svg) · [Logo PNG](docs/assets/logo.png) · [動態封面](docs/assets/hero.svg) · [靜態封面](docs/assets/hero-static.svg) · [架構圖 SVG](docs/assets/architecture.svg)。原始圖形與配色資料一起收錄在 Release 的品牌素材包；首頁動畫尊重減少動態效果偏好。
+[Logo SVG](docs/assets/logo.svg) · [Logo PNG](docs/assets/logo.png) · [動態封面](docs/assets/hero.svg) · [靜態封面](docs/assets/hero-static.svg) · [架構圖 SVG](docs/assets/architecture.svg) · [品牌配色](docs/assets/brand.json)。首頁動畫尊重減少動態效果偏好。

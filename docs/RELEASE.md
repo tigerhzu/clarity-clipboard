@@ -1,12 +1,12 @@
 # Windows Release 指南
 
-本機待發佈版本為 **1.0.14**，發行目標為 **Windows x64**；此版本尚未上傳至 GitHub Release。倉庫保存原始碼、圖示與建置腳本；已發佈版本的可安裝執行檔放在 GitHub Release 資產中。
+**v1.0.14** 的兩個 Windows x64 安裝器與 SHA-256 校驗清單可從 [GitHub Release](https://github.com/tigerhzu/clarity-clipboard/releases/tag/v1.0.14) 下載。倉庫保存對應的原始碼、圖示與建置腳本。
 
 ## 使用者下載
 
 在 [Releases](https://github.com/tigerhzu/clarity-clipboard/releases/latest) 優先下載 `Clarity-Setup.exe`。它包含正式 NSIS 安裝包，使用目前 Windows 使用者的安裝位置，安裝完成後開啟程式。
 
-如需標準安裝精靈，本機 1.0.14 產物為 `Clarity-Clipboard-1.0.14-x64-setup.exe`。它與快速安裝器內嵌的內容來自同一次 Tauri 建置。
+如需標準安裝精靈，下載 `Clarity-Clipboard-1.0.14-x64-setup.exe`。它與快速安裝器內嵌的 NSIS 檔案具有相同的 SHA-256。
 
 | 檔案 | 用途 |
 | --- | --- |
