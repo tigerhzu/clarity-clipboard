@@ -1,5 +1,15 @@
 use tauri::State;
 
+#[tauri::command]
+pub fn save_manual_item(
+    service: State<'_, LibraryService>,
+    input: crate::services::library_service::ManualItemInput,
+) -> Result<crate::database::models::ClipboardItem, String> {
+    service
+        .save_manual_item(input)
+        .map_err(|error| error.to_string())
+}
+
 use crate::{
     database::models::{Folder, FolderItem, PersonalItem},
     services::{clipboard_service::ClipboardService, library_service::LibraryService},
@@ -8,6 +18,16 @@ use crate::{
 #[tauri::command]
 pub fn list_folders(service: State<'_, LibraryService>) -> Result<Vec<Folder>, String> {
     service.list_folders().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn reorder_folders(
+    service: State<'_, LibraryService>,
+    folder_ids: Vec<String>,
+) -> Result<Vec<Folder>, String> {
+    service
+        .reorder_folders(&folder_ids)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

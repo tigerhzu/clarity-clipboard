@@ -147,7 +147,7 @@ export function HistoryList({
   );
 
   return (
-    <section className="history-panel" aria-labelledby="history-title">
+    <section className="history-panel" id="workspace-history" aria-labelledby="history-title">
       <header className="history-header">
         <div>
           <span className="panel-kicker">{panelKicker}</span>

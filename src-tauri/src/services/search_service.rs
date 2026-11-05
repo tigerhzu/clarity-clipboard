@@ -9,6 +9,8 @@ use crate::database::{
 pub enum SearchServiceError {
     #[error(transparent)]
     Repository(#[from] RepositoryError),
+    #[error("invalid calendar date range")]
+    InvalidDateRange,
 }
 
 #[derive(Debug, Clone)]
@@ -17,6 +19,41 @@ pub struct SearchService {
 }
 
 impl SearchService {
+    pub fn activity_days(
+        &self,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Result<Vec<crate::database::models::ClipboardDay>, SearchServiceError> {
+        validate_date_range(Some(start_ms), Some(end_ms))?;
+        Ok(self.repository.activity_days(start_ms, end_ms)?)
+    }
+
+    pub fn search_dated(
+        &self,
+        query: &str,
+        filter: &str,
+        limit: usize,
+        offset: usize,
+        start_ms: Option<i64>,
+        end_ms: Option<i64>,
+    ) -> Result<Vec<ClipboardItem>, SearchServiceError> {
+        let mut criteria = self.criteria(query, filter, limit, offset);
+        apply_date_range(&mut criteria, start_ms, end_ms)?;
+        Ok(self.repository.search(&criteria)?)
+    }
+
+    pub fn count_dated(
+        &self,
+        query: &str,
+        filter: &str,
+        start_ms: Option<i64>,
+        end_ms: Option<i64>,
+    ) -> Result<usize, SearchServiceError> {
+        let mut criteria = self.criteria(query, filter, 1, 0);
+        apply_date_range(&mut criteria, start_ms, end_ms)?;
+        Ok(self.repository.count(&criteria)?)
+    }
+
     pub fn new(repository: ClipboardRepository) -> Self {
         Self { repository }
     }
@@ -31,6 +68,7 @@ impl SearchService {
         self.search_page(query, filter, limit, 0)
     }
 
+    #[cfg(test)]
     pub fn search_page(
         &self,
         query: &str,
@@ -42,6 +80,7 @@ impl SearchService {
         Ok(self.repository.search(&criteria)?)
     }
 
+    #[cfg(test)]
     pub fn count(&self, query: &str, filter: &str) -> Result<usize, SearchServiceError> {
         let criteria = self.criteria(query, filter, 1, 0);
         Ok(self.repository.count(&criteria)?)
@@ -62,6 +101,36 @@ impl SearchService {
             offset,
         }
     }
+}
+
+fn validate_date_range(
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
+) -> Result<(), SearchServiceError> {
+    match (start_ms, end_ms) {
+        (None, None) => Ok(()),
+        (Some(start), Some(end)) if end > start && end.saturating_sub(start) <= 32 * 86_400_000 => {
+            Ok(())
+        }
+        _ => Err(SearchServiceError::InvalidDateRange),
+    }
+}
+
+fn apply_date_range(
+    criteria: &mut SearchCriteria,
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
+) -> Result<(), SearchServiceError> {
+    validate_date_range(start_ms, end_ms)?;
+    if let (Some(start), Some(end)) = (start_ms, end_ms) {
+        criteria.start_ms = Some(
+            criteria
+                .start_ms
+                .map_or(start, |existing| existing.max(start)),
+        );
+        criteria.end_ms = Some(criteria.end_ms.map_or(end, |existing| existing.min(end)));
+    }
+    Ok(())
 }
 
 fn resolve_filter(filter: &str) -> (String, Option<i64>, Option<i64>) {
@@ -124,6 +193,137 @@ mod tests {
         clipboard_service::ClipboardService, image_service::ImageService,
         privacy_service::PrivacyService, settings_service::SettingsService,
     };
+
+    #[test]
+    fn calendar_dates_combine_with_search_categories_and_pagination() {
+        use crate::database::models::NewClipboardItem;
+        let directory = tempfile::tempdir().unwrap();
+        let repository =
+            ClipboardRepository::initialize(directory.path().join("calendar.db")).unwrap();
+        let search = SearchService::new(repository.clone());
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 9, 15).unwrap();
+        let start = local_midnight(date);
+        let end = local_midnight(date.succ_opt().unwrap());
+        for index in 0..262 {
+            let timestamp = match index {
+                0 => start - 1,
+                261 => end,
+                _ => start + index,
+            };
+            repository
+                .save_with_consecutive_deduplication(
+                    NewClipboardItem {
+                        id: index.to_string(),
+                        content: Some(format!("calendar note {index}")),
+                        content_type: if index == 1 {
+                            "IMAGE".into()
+                        } else {
+                            "TEXT".into()
+                        },
+                        content_hash: index.to_string(),
+                        source_app: None,
+                        source_process: None,
+                        source_window: None,
+                        created_at: timestamp,
+                        file_path: None,
+                        metadata: None,
+                        tags: None,
+                    },
+                    5000,
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            search
+                .count_dated("", "ALL", Some(start), Some(end))
+                .unwrap(),
+            260
+        );
+        assert_eq!(
+            search
+                .search_dated("", "ALL", 250, 0, Some(start), Some(end))
+                .unwrap()
+                .len(),
+            250
+        );
+        assert_eq!(
+            search
+                .search_dated("", "ALL", 250, 250, Some(start), Some(end))
+                .unwrap()
+                .len(),
+            10
+        );
+        assert_eq!(
+            search
+                .count_dated("", "TEXT", Some(start), Some(end))
+                .unwrap(),
+            259
+        );
+        assert_eq!(
+            search
+                .search_dated("calendar", "IMAGES", 250, 0, Some(start), Some(end))
+                .unwrap()[0]
+                .id,
+            "1"
+        );
+        repository.toggle_pin("1").unwrap();
+        assert_eq!(
+            search
+                .count_dated("", "PINNED", Some(start), Some(end))
+                .unwrap(),
+            1
+        );
+        let days = search.activity_days(start, end).unwrap();
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0].date, "2026-09-15");
+        assert_eq!(days[0].count, 260);
+        repository.delete_item("1").unwrap();
+        assert_eq!(search.activity_days(start, end).unwrap()[0].count, 259);
+        assert!(search
+            .count_dated("", "ALL", Some(end), Some(start))
+            .is_err());
+        assert!(search.count_dated("", "ALL", Some(start), None).is_err());
+    }
+
+    #[test]
+    fn duplicates_across_midnight_keep_both_calendar_days() {
+        use crate::database::models::{NewClipboardItem, SaveDisposition};
+        let directory = tempfile::tempdir().unwrap();
+        let repository =
+            ClipboardRepository::initialize(directory.path().join("calendar.db")).unwrap();
+        let midnight = local_midnight(chrono::NaiveDate::from_ymd_opt(2026, 9, 15).unwrap());
+        let item = |id: &str, created_at| NewClipboardItem {
+            id: id.into(),
+            content: Some("same text".into()),
+            content_type: "TEXT".into(),
+            content_hash: "same hash".into(),
+            source_app: None,
+            source_process: None,
+            source_window: None,
+            created_at,
+            file_path: None,
+            metadata: None,
+            tags: None,
+        };
+        repository
+            .save_with_consecutive_deduplication(item("before", midnight - 1000), 5000)
+            .unwrap();
+        let after = repository
+            .save_with_consecutive_deduplication(item("after", midnight + 1000), 5000)
+            .unwrap();
+        assert_eq!(after.disposition, SaveDisposition::Inserted);
+        let duplicate = repository
+            .save_with_consecutive_deduplication(item("duplicate", midnight + 2000), 5000)
+            .unwrap();
+        assert_eq!(duplicate.disposition, SaveDisposition::RefreshedDuplicate);
+        assert_eq!(
+            repository
+                .activity_days(midnight - 5000, midnight + 5000)
+                .unwrap()
+                .len(),
+            2
+        );
+    }
 
     fn services() -> (tempfile::TempDir, ClipboardService, SearchService) {
         let directory = tempfile::tempdir().expect("temporary directory");

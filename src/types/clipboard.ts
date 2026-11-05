@@ -80,6 +80,7 @@ export interface ClipboardImageMetadata {
 export type ClipboardTextScale = 100 | 120 | 150;
 
 export interface ClipboardSettings {
+  hermesEnabled: boolean;
   retentionDays: 7 | 14 | 30 | null;
   excludedApps: string[];
   sensitiveFilterEnabled: boolean;

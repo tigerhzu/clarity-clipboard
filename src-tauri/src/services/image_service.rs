@@ -44,6 +44,44 @@ pub struct ImageService {
 }
 
 impl ImageService {
+    pub fn store_upload(
+        &self,
+        encoded: &str,
+        collection: bool,
+    ) -> Result<StoredImage, ImageServiceError> {
+        let invalid = || {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "請選擇 20 MB 以下的 PNG、JPEG 或 BMP 圖片",
+            )
+        };
+        if encoded.len() > 28 * 1024 * 1024 {
+            return Err(invalid().into());
+        }
+        let bytes = STANDARD.decode(encoded).map_err(|_| invalid())?;
+        if bytes.len() > 20 * 1024 * 1024 {
+            return Err(invalid().into());
+        }
+        let mut reader = image::ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(8192);
+        limits.max_image_height = Some(8192);
+        limits.max_alloc = Some(128 * 1024 * 1024);
+        reader.limits(limits);
+        let image = reader.decode()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        if collection {
+            self.store_image_in(
+                &id,
+                image,
+                &self.collection_images_directory,
+                &self.collection_thumbnails_directory,
+            )
+        } else {
+            self.store_image(&id, image)
+        }
+    }
+
     pub fn initialize(directory: impl AsRef<Path>) -> Result<Self, ImageServiceError> {
         let images_directory = directory.as_ref().to_path_buf();
         let thumbnails_directory = images_directory.join("thumbnails");

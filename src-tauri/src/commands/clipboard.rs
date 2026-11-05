@@ -16,13 +16,17 @@ pub fn list_clipboard_items(
     filter: Option<String>,
     limit: Option<usize>,
     offset: Option<usize>,
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
 ) -> Result<Vec<ClipboardItem>, String> {
     service
-        .search_page(
+        .search_dated(
             query.as_deref().unwrap_or_default(),
             filter.as_deref().unwrap_or("ALL"),
             limit.unwrap_or(250),
             offset.unwrap_or(0),
+            start_ms,
+            end_ms,
         )
         .map_err(|error| error.to_string())
 }
@@ -32,12 +36,27 @@ pub fn count_clipboard_items(
     service: State<'_, SearchService>,
     query: Option<String>,
     filter: Option<String>,
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
 ) -> Result<usize, String> {
     service
-        .count(
+        .count_dated(
             query.as_deref().unwrap_or_default(),
             filter.as_deref().unwrap_or("ALL"),
+            start_ms,
+            end_ms,
         )
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn list_clipboard_days(
+    service: State<'_, SearchService>,
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<Vec<crate::database::models::ClipboardDay>, String> {
+    service
+        .activity_days(start_ms, end_ms)
         .map_err(|error| error.to_string())
 }
 

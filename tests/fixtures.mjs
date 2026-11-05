@@ -30,7 +30,8 @@ export function createFixture({ empty = false, textScale = 120, extraRows = 0, b
   const personal = [{ ...item("personal-reply", "TEXT", "收到，謝謝提供資料。\n我會確認內容，再與您回覆後續安排。", 1800, { customName: "常用回覆", sourceApp: null, sourceProcess: null, sourceWindow: null }), title: "常用回覆", sourceItemId: null, sortOrder: 0 },
     { ...item("personal-command", "COMMAND", "git status --short", 1801, { customName: "查看工作進度", sourceApp: null, sourceProcess: null, sourceWindow: null }), title: "查看工作進度", sourceItemId: null, sortOrder: 1 }];
   return { history: empty ? [] : history, folders: empty ? [] : folders, folderItems: empty ? [] : folderItems,
-    personal: empty ? [] : personal, settings: { retentionDays: 30, excludedApps: ["1Password.exe", "Bitwarden.exe", "KeePass.exe", "KeePassXC.exe", "mstsc.exe"], sensitiveFilterEnabled: true, textScale, hotkey: "Alt+Z" },
+    personal: empty ? [] : personal, settings: { retentionDays: 30, excludedApps: ["1Password.exe", "Bitwarden.exe", "KeePass.exe", "KeePassXC.exe", "mstsc.exe"], sensitiveFilterEnabled: true, textScale, hotkey: "Alt+Z", hermesEnabled: false },
+    hermesInfo: { available: true, error: null, prompt: "請幫我串接這台電腦的剪貼後台。使用 clarity-clipboard.exe --mcp，保留現有 Hermes 設定，呼叫 clarity_status 驗證。" },
     copies: [], calls: [], failCommands: [], nextId: 1 };
 }
 
@@ -52,12 +53,13 @@ export function installTauriFixture({ fixture, persist = true, historyError = fa
     if (!item) throw new Error(`Synthetic record not found: ${id}`);
     return item;
   };
-  const sortHistory = ({ query = "", filter = "ALL", offset = 0, limit = 250 } = {}) => {
+  const sortHistory = ({ query = "", filter = "ALL", offset = 0, limit = 250, startMs, endMs } = {}) => {
     const q = query.trim().toLowerCase();
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const week = new Date(today); week.setDate(week.getDate() - (week.getDay() + 6) % 7);
     const typeGroups = { TEXT: ["TEXT"], LINKS: ["URL"], IMAGES: ["IMAGE"], CODE: ["CODE", "JSON", "COMMAND"], PATHS: ["FILE_PATH", "NETWORK_PATH"], EMAIL: ["EMAIL"], IP: ["IP"] };
     const filtered = state.history.filter((row) => {
+      if (startMs != null && row.createdAt < startMs || endMs != null && row.createdAt >= endMs) return false;
       if (q && ![row.content, row.sourceApp, row.contentType, row.tags].filter(Boolean).join("\n").toLowerCase().includes(q)) return false;
       if (filter === "PINNED") return row.isPinned;
       if (typeGroups[filter]) return typeGroups[filter].includes(row.contentType);
@@ -96,12 +98,35 @@ export function installTauriFixture({ fixture, persist = true, historyError = fa
       }
       let result;
       switch (command) {
+        case "save_manual_item": {
+          const input = args.input;
+          const store = input.storage === "history" ? state.history : input.storage === "folder" ? state.folderItems : state.personal;
+          result = input.id ? find(store, input.id) : { id: newId(input.storage), createdAt: Date.now(), sourceApp: null, sourceProcess: null, sourceWindow: null, sourceItemId: null, isPinned: Boolean(input.pinned), sortOrder: store.length, folderId: input.folderId, filePath: null, metadata: null };
+          Object.assign(result, { title: input.title, customName: input.title, content: input.content, contentType: input.contentType, updatedAt: Date.now() });
+          if (input.imageBase64) { result.filePath = newId("image") + ".png"; result.metadata = JSON.stringify({ width: 20, height: 12, byteSize: 100, thumbnailPath: result.filePath }); }
+          if (input.contentType !== "IMAGE") { result.filePath = null; result.metadata = null; }
+          if (!input.id) store.push(result);
+          recount(); break;
+        }
         case "list_clipboard_items": return clone(sortHistory(args).items);
         case "count_clipboard_items": return sortHistory(args).total;
+        case "list_clipboard_days": {
+          const days = new Map();
+          for (const item of state.history) {
+            if (item.createdAt < args.startMs || item.createdAt >= args.endMs) continue;
+            const date = new Date(item.createdAt);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+            days.set(key, (days.get(key) || 0) + 1);
+          }
+          return [...days].map(([date, count]) => ({ date, count }));
+        }
         case "list_folders": recount(); return clone(state.folders);
+        case "reorder_folders": state.folders = reorder(state.folders, args.folderIds); recount(); result = state.folders; break;
         case "list_folder_items": return clone(state.folderItems.filter((row) => row.folderId === args.folderId).sort((a, b) => a.sortOrder - b.sortOrder));
         case "list_personal_items": return clone(state.personal.sort((a, b) => a.sortOrder - b.sortOrder));
         case "get_clipboard_settings": return clone(state.settings);
+        case "get_hermes_integration": return clone(state.hermesInfo);
+        case "copy_hermes_prompt": state.copies.push({ storage: "prompt", content: state.hermesInfo.prompt }); result = null; break;
         case "update_clipboard_settings": state.settings = clone(args.settings); result = state.settings; break;
         case "get_clipboard_image": case "get_folder_item_image": case "get_personal_item_image": return image;
         case "copy_clipboard_item": result = find(state.history, args.id); state.copies.push({ storage: "history", id: args.id, content: result.content }); break;

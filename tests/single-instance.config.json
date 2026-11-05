@@ -1,0 +1,7 @@
+{
+  "identifier": "com.tigerhzu.clarityclipboard.single-instance-test",
+  "build": { "beforeBuildCommand": "" },
+  "app": {
+    "windows": [{ "label": "main", "title": "Clarity · 單一執行個體測試", "visible": false }]
+  }
+}

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Check, Clock3, Keyboard, LoaderCircle, Monitor, RefreshCw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
+import { Bot, Check, Clock3, Keyboard, LoaderCircle, Lock, Monitor, RefreshCw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { getClipboardSettings, updateClipboardSettings } from "../lib/clipboard-api";
 import type { ClipboardSettings, ClipboardTextScale } from "../types/clipboard";
 import { DEFAULT_GLOBAL_HOTKEY, formatHotkey, hotkeyFromKeyboardEvent } from "../lib/hotkey";
 import "./dialogs.css";
+import { HermesSettings } from "./HermesSettings";
 
 interface SettingsDialogProps {
   onClose: () => void;
@@ -13,14 +14,53 @@ const sections = [
   { id: "general", label: "一般", icon: SlidersHorizontal },
   { id: "storage", label: "儲存", icon: Clock3 },
   { id: "privacy", label: "隱私", icon: ShieldCheck },
+  { id: "hermes", label: "Hermes", icon: Bot },
 ] as const;
+const PROTECTED_EXCLUDED_APP = "1Password.exe";
+const PROTECTED_EXCLUDED_KEY = "1password";
+const MAX_EXCLUDED_APPS = 100;
+
+function excludedAppKey(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized.endsWith(".exe") ? normalized.slice(0, -4) : normalized;
+}
+
+function normalizeExcludedApps(values: string[]) {
+  const normalized = [PROTECTED_EXCLUDED_APP];
+  const seen = new Set([PROTECTED_EXCLUDED_KEY]);
+  for (const rawValue of values) {
+    const value = rawValue.trim();
+    const key = excludedAppKey(value);
+    if (!value || seen.has(key)) continue;
+    if (normalized.length >= MAX_EXCLUDED_APPS) break;
+    seen.add(key);
+    normalized.push(value);
+  }
+  return normalized;
+}
+
+function editableExcludedApps(values: string[]) {
+  return values.filter((value) => excludedAppKey(value) !== PROTECTED_EXCLUDED_KEY);
+}
+
+function parseExcludedDraft(value: string) {
+  const seen = new Set<string>();
+  return value.split(/\r?\n/).map((entry) => entry.trim()).filter((entry) => {
+    const key = excludedAppKey(entry);
+    if (!entry || key === PROTECTED_EXCLUDED_KEY || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function serializeSettings(settings: ClipboardSettings) {
   return JSON.stringify({ retentionDays: settings.retentionDays, sensitiveFilterEnabled: settings.sensitiveFilterEnabled,
-    excludedApps: settings.excludedApps, textScale: settings.textScale, hotkey: settings.hotkey });
+    excludedApps: settings.excludedApps, textScale: settings.textScale, hotkey: settings.hotkey, hermesEnabled: settings.hermesEnabled });
 }
 export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
   const [settings, setSettings] = useState<ClipboardSettings | null>(null);
   const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
+  const [savedHermesEnabled, setSavedHermesEnabled] = useState(false);
   const [excludedDraft, setExcludedDraft] = useState("");
   const [activeSection, setActiveSection] = useState<(typeof sections)[number]["id"]>("general");
   const [loading, setLoading] = useState(true);
@@ -37,8 +77,10 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
     setLoading(true); setError(null);
     try {
       const value = await getClipboardSettings();
-      setSettings(value); setExcludedDraft(value.excludedApps.join("\n"));
-      setInitialSnapshot(serializeSettings(value));
+      const normalized = { ...value, hermesEnabled: value.hermesEnabled ?? false, excludedApps: normalizeExcludedApps(value.excludedApps) };
+      setSavedHermesEnabled(normalized.hermesEnabled);
+      setSettings(normalized); setExcludedDraft(editableExcludedApps(normalized.excludedApps).join("\n"));
+      setInitialSnapshot(serializeSettings(normalized));
     } catch { setSettings(null); setError("無法讀取設定，請再試一次。"); }
     finally { setLoading(false); }
   }, []);
@@ -97,7 +139,7 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
         {confirmingClose ? (
           <div className="cc-modal-body cc-discard-body"><p id="settings-description">尚未儲存的設定將會還原。你也可以回到設定繼續編輯。</p></div>
         ) : <>
-          <p id="settings-description" className="cc-sr-only">調整顯示、快捷鍵、歷史保留期限與隱私。</p>
+          <p id="settings-description" className="cc-sr-only">調整顯示、快捷鍵、歷史保留期限、隱私與 Hermes 串接。</p>
           <div className="cc-settings-tabs" role="tablist" aria-label="設定分類">
             {sections.map(({ id, label, icon: Icon }, index) => (
               <button key={id} id={`settings-tab-${id}`} type="button" role="tab" aria-selected={activeSection === id}
@@ -141,18 +183,20 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
                 {activeSection === "privacy" && <>
                   <div className="cc-setting-heading"><ShieldCheck size={18} /><div><h3>決定哪些內容被記錄</h3><p>這些選項適用於之後複製的新內容。</p></div></div>
                   <label className="cc-setting-row cc-toggle-row"><span><strong>過濾敏感內容</strong><small>略過可辨識的金鑰、密碼欄位及信用卡號</small></span><input type="checkbox" className="cc-switch" role="switch" checked={settings.sensitiveFilterEnabled} onChange={(event) => setSettings({ ...settings, sensitiveFilterEnabled: event.target.checked })} /></label>
-                  <label className="cc-dialog-field cc-excluded-field"><span>排除的應用程式 <small>{settings.excludedApps.length} / 100</small></span>
-                    <textarea value={excludedDraft} rows={4} spellCheck={false} placeholder={"例如：\nBitwarden.exe\n1Password.exe"} aria-describedby="excluded-apps-help" onChange={(event) => {
-                      const value = event.target.value; setExcludedDraft(value); const seen = new Set<string>();
-                      const excludedApps = value.split(/\r?\n/).map((entry) => entry.trim()).filter((entry) => {
-                        if (!entry || seen.has(entry.toLowerCase())) return false;
-                        seen.add(entry.toLowerCase()); return true;
-                      });
+                  <div className="cc-protected-exclusion" role="status" aria-label="固定排除的應用程式">
+                    <Lock size={15} aria-hidden="true" />
+                    <span><strong>{PROTECTED_EXCLUDED_APP}</strong><small>固定排除，無法移除</small></span>
+                  </div>
+                  <label className="cc-dialog-field cc-excluded-field"><span>其他排除的應用程式 <small>{settings.excludedApps.length} / {MAX_EXCLUDED_APPS}</small></span>
+                    <textarea value={excludedDraft} rows={4} spellCheck={false} placeholder={"例如：\nBitwarden.exe\nKeePass.exe"} aria-describedby="excluded-apps-help" onChange={(event) => {
+                      const excludedApps = normalizeExcludedApps(parseExcludedDraft(event.target.value));
+                      setExcludedDraft(editableExcludedApps(excludedApps).join("\n"));
                       setSettings({ ...settings, excludedApps });
                     }} />
                   </label>
-                  <p id="excluded-apps-help" className="cc-field-help">每行一個應用程式或執行檔名稱。從這些程式複製的內容不會加入歷史。</p>
+                  <p id="excluded-apps-help" className="cc-field-help">1Password.exe 會固定排除；其餘每行一個應用程式或執行檔名稱。從這些程式複製的內容不會加入歷史。</p>
                 </>}
+                {activeSection === "hermes" && <HermesSettings enabled={settings.hermesEnabled} savedEnabled={savedHermesEnabled} onChange={(hermesEnabled) => setSettings({ ...settings, hermesEnabled })} />}
               </fieldset>
             )}
             {!loading && error && <div className="cc-dialog-error" role="alert"><p>{error}</p>{!settings && <button className="cc-dialog-secondary" type="button" onClick={() => void load()}><RefreshCw size={14} />重新讀取</button>}</div>}

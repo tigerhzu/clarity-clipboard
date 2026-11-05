@@ -1,6 +1,6 @@
 [package]
 name = "clarity-clipboard"
-version = "1.0.9"
+version = "1.0.14"
 description = "A local-first Windows clipboard workspace"
 authors = ["Tiger Hsu"]
 license = "MIT"
@@ -18,7 +18,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clipboard-win = { version = "5.4.1", features = ["monitor"] }
 base64 = "0.22"
 hex = "0.4"
-image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
+image = { version = "0.25", default-features = false, features = ["bmp", "png", "jpeg"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }

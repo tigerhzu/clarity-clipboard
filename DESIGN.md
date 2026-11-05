@@ -58,8 +58,17 @@ orbit accompanies the empty preview. Decoration never animates or covers text.
 
 ## Layout and interaction
 
-The desktop grid has a 196px full-height navigation rail and two flexible
-content columns (history 0.88fr; preview 1.12fr). The 84px topbar spans both
+The desktop grid defaults to a 196px full-height navigation rail and two flexible
+content columns (history 0.88fr; preview 1.12fr). Two vertical separators resize
+navigation and history/preview horizontally. Their 10px pointer targets overlay
+the boundary without consuming column width; a 2px hairline turns accent on
+hover, focus or drag. Navigation is at least 180px and can expand until only the
+content minimums remain; history is at least 300px, and preview at least 340px.
+Smaller windows clamp visible widths without
+overwriting the saved preference. Persist navigation pixels and the content split
+ratio locally. Arrow keys adjust 10px (Shift 40px), Home/End choose limits,
+double-click or Enter resets that separator, and Escape/blur cancels a drag.
+The 84px topbar spans both
 content columns, and the history/preview surfaces begin directly below it so
 the reading area keeps the full available height. Navigation contains recent
 clips, pins, personal snippets, folders, settings, and a compact category
@@ -73,11 +82,32 @@ Ctrl K and Ctrl F. History search is debounced 120ms and uses the existing
 backend search/pagination. Mutations are disabled until current results arrive.
 All nine content choices are visible category buttons with leading icons: 全部、
 已釘選、文字、連結、圖片、程式碼、路徑、IP、Email. Time is the only dropdown:
-全部時間、今天、昨天、
-本週、更早. No content button is hidden or horizontally scrolled out of view.
-The existing single-filter contract is preserved: choosing time selects all
-content in that period; choosing a content button resets the time to all time.
+全部時間、今天、昨天、本週、更早. The time label sits above a full-width
+36px combobox so a selected YYYY-MM-DD date never competes with its label or
+chevron for space. A themed listbox, at least 180px wide, opens above or below
+the trigger according to available viewport space, outside the scrolling rail.
+Use raised surface, an 8px radius, strong hairline and 34px option rows. Arrows,
+Home/End and Enter navigate/choose; Escape, Tab, blur and outside clicks close.
+No content button is hidden or horizontally scrolled out of view.
+Legacy time presets select all content in that period. The calendar's selected
+date is an independent outer scope: changing category retains the date, and
+search and pagination apply within that date. Choosing a legacy time preset
+clears the calendar date; the calendar's All time button clears any time preset.
 Collection queries search saved content independently.
+
+The history workspace has a compact date bar below search: 複製日曆, 全部時間,
+今天 and 選擇日期. The date picker is a 336px floating month panel with 18px
+padding, a 12px radius, the raised surface, a strong hairline and a soft shadow.
+The Monday-first grid reserves six weeks at 36px per day with 4px gaps. Days
+with retained records use accent-soft, accent-hover numerals and a 3px static
+glowing dot (7px accent shadow); selection uses action-bg with action-ink.
+Today has a strong-line outline, separate from selection. No pulse animation.
+Calendar statistics aggregate all retained history, independent of category,
+query and pagination. Empty, loading and retryable error states preserve the
+grid footprint. Empty days remain selectable with a clear empty-results state.
+Arrow keys, Home/End and PageUp/PageDown move the focused date; Enter selects;
+Escape closes and returns focus. The panel scrolls within the window at 900×600
+and large text sizes. Date boundaries use local midnight, including DST days.
 
 History rows have a type icon or real image thumbnail, a two-line excerpt,
 source/type/time metadata, and a pin indicator. Row height is at least 86px.
@@ -101,6 +131,15 @@ Tab, arrows and Escape, closes after selection, and complements existing
 drag-to-collection. Saved content remains an independent snapshot. Folder and
 personal sorting use the complete collection order, even during search.
 
+Sidebar folders can be dragged vertically from the folder icon/name. A 6px
+movement threshold preserves clicks; the source dims to 40% opacity and a 2px
+accent line marks insertion before/after the target without shifting layout.
+The navigation scrolls near its edges during dragging. Escape, pointer cancel,
+window blur, or release outside a folder cancels the move. Alt+Up/Down offers
+the same ordering from a focused folder button. Ordering saves to SQLite and
+survives reopening; failures keep the previous order and show an alert. Clipboard
+content drops retain their separate dashed destination outline.
+
 Pin and delete are quiet header actions. History/personal item deletion uses
 the existing two-step confirmation; folder deletion uses a dedicated dialog.
 The confirmation state is visibly red and expires. Copy and save success use
@@ -108,11 +147,21 @@ short-lived status messages; failures use alert messages.
 
 ## Dialogs and settings
 
-Settings are organized into General, Storage, and Privacy. Keep all preferences:
+Settings are organized into General, Storage, Privacy, and Hermes. Keep all preferences:
 global shortcut, three text scales, retention, excluded processes and common
-sensitive-content filtering. Save persists the complete object. Cancellation
-does not save. Errors retain the draft and offer retry. The first-run guide is
+sensitive-content filtering. In Privacy, `1Password.exe` is a protected exclusion
+shown as a locked row outside the editable list; all other exclusions remain
+editable. Save persists the complete object. Cancellation does not save. Errors retain the draft and offer retry. The first-run guide is
 one dismissible page with optional access to the same settings form.
+
+The Hermes tab has a default-off read/write switch, a labeled read-only setup
+prompt and a compact copy action with pending/success/error feedback. The switch
+uses the normal draft/save/cancel flow; copy works independently of saving and
+states when the switch still needs to be saved. The prompt is portable across
+Windows users and installations, contains no token or personal paths, and
+explains connection verification. State local-machine scope and model-service
+data handling in plain language. Use the existing scrolling body, control tokens
+and keyboard focus rules at both supported window sizes and all text scales.
 
 Dialog panels use a fixed header/footer and independently scrolling body.
 Focus enters the dialog, remains inside with Tab/Shift Tab, and returns to the
@@ -124,7 +173,7 @@ only. Folder names and snippet titles retain existing validation.
 ## Responsive behavior, states and motion
 
 Validate 1180×760 and the native minimum 900×600. Below 1060px, navigation
-shrinks to 180px and preview padding to 20–22px. The topbar keeps only the
+defaults to 180px and preview padding to 20–22px. The topbar keeps only the
 search and creation controls so they remain usable at every width. Below
 650px height, the topbar becomes 70px; the lower-rail category section stays
 inside the independently scrollable navigation. All columns use min-height:0 and
@@ -148,3 +197,7 @@ No migration or rewrite of user data is required for this redesign.
 synthetic Tauri IPC data. It never reads or changes real clipboard content.
 Screenshot artifacts and the test report are written outside user data.
 Production build and the Rust regression suite complement the UI checks.
+
+### 全工作區新增與編輯
+
+最近複製、所有類型篩選、收藏資料夾與常用片段皆提供新增內容；Ctrl+N 使用目前目的地，類型篩選預填相應類型。每筆預覽皆可編輯標題、內容與類型；圖片支援選檔新增與替換，未選新圖則保留原圖。編輯視窗沿用既有緊密雙欄欄位、可捲動內容與固定操作列；圖片預覽高 160px、object-fit: contain。儲存錯誤留在視窗並保留草稿；成功後清空搜尋並選取儲存結果，歷史回到全部內容以避免篩選隱藏新資料。

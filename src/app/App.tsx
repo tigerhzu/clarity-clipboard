@@ -4,6 +4,9 @@ import { isTauri } from "@tauri-apps/api/core";
 import { Check, LoaderCircle, Plus, Search, X } from "lucide-react";
 import { ConfirmFolderDeleteDialog, FolderDialog } from "../components/FolderDialog";
 import { HistoryList } from "../components/HistoryList";
+import { ClipboardCalendar } from "../components/ClipboardCalendar";
+import { dayRange } from "../lib/calendar";
+import { useWorkspaceLayout } from "../components/WorkspaceLayout";
 import { PersonalItemDialog, type LibraryItemDialogMode } from "../components/PersonalItemDialog";
 import { PreviewPane } from "../components/PreviewPane";
 import { Sidebar, type SidebarSelection } from "../components/Sidebar";
@@ -17,7 +20,7 @@ import {
   copyPersonalItem,
   countClipboardItems,
   createFolder,
-  createPersonalItem,
+  saveManualItem,
   deleteClipboardItem,
   deleteFolder,
   deletePersonalItem,
@@ -27,13 +30,13 @@ import {
   listFolders,
   listPersonalItems,
   onClipboardChanged,
+  onLibraryChanged,
   removeFolderItem,
   renameFolder,
   reorderFolderItems,
+  reorderFolders,
   reorderPersonalItems,
   toggleClipboardPin,
-  updateFolderItem,
-  updatePersonalItem,
 } from "../lib/clipboard-api";
 import { DEFAULT_GLOBAL_HOTKEY, resolveGlobalHotkey } from "../lib/hotkey";
 import type { ItemDragPayload } from "../lib/drag";
@@ -110,7 +113,7 @@ function matchesQuery(item: DisplayItem, query: string): boolean {
 }
 
 function movedItemIds(
-  items: DisplayItem[],
+  items: { id: string }[],
   sourceId: string,
   targetId: string,
   after = false,
@@ -136,10 +139,10 @@ interface PointerReorderTarget {
   after: boolean;
 }
 
-function pointerReorderTargetAt(clientX: number, clientY: number): PointerReorderTarget | null {
+function pointerReorderTargetAt(clientX: number, clientY: number, folderNavigation = false): PointerReorderTarget | null {
   const element = document.elementFromPoint(clientX, clientY);
-  const target = element?.closest<HTMLElement>("[data-clipboard-reorder-target]");
-  const id = target?.dataset.clipboardReorderTarget;
+  const target = element?.closest<HTMLElement>(folderNavigation ? "[data-folder-reorder-target]" : "[data-clipboard-reorder-target]");
+  const id = folderNavigation ? target?.dataset.folderReorderTarget : target?.dataset.clipboardReorderTarget;
   if (!target || !id) return null;
   const bounds = target.getBoundingClientRect();
   return { id, after: clientY >= bounds.top + bounds.height / 2 };
@@ -154,8 +157,10 @@ function collectionTargetFromKey(targetKey: string): "personal" | { folderId: st
   return null;
 }
 
+type PointerDragPayload = ItemDragPayload | { id: string; kind: "folder-navigation" };
+
 interface PointerDragSession {
-  payload: ItemDragPayload;
+  payload: PointerDragPayload;
   pointerId: number;
   startX: number;
   startY: number;
@@ -164,13 +169,14 @@ interface PointerDragSession {
 }
 
 interface PointerDragVisual {
-  payload: ItemDragPayload;
+  payload: PointerDragPayload;
   targetKey: string | null;
   reorderTargetId: string | null;
   reorderAfter: boolean;
 }
 
 export function App() {
+  const layout = useWorkspaceLayout();
   const [items, setItems] = useState<ClipboardItem[]>([]);
   const [folders, setFolders] = useState<FolderModel[]>([]);
   const [collectionItems, setCollectionItems] = useState<DisplayItem[]>([]);
@@ -183,13 +189,16 @@ export function App() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [filter, setFilter] = useState<ClipboardFilter>("ALL");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [calendarRevision, setCalendarRevision] = useState(0);
+  const dateRange = useMemo(() => dayRange(selectedDate), [selectedDate]);
   const [activeView, setActiveView] = useState<SidebarSelection>({ kind: "history", filter: "ALL" });
   const activeViewRef = useRef(activeView);
   activeViewRef.current = activeView;
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [appliedCriteria, setAppliedCriteria] = useState({ query: "", filter: "ALL" as ClipboardFilter });
+  const [appliedCriteria, setAppliedCriteria] = useState({ query: "", filter: "ALL" as ClipboardFilter, date: null as string | null });
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const [deleteArmedId, setDeleteArmedId] = useState<string | null>(null);
@@ -201,7 +210,11 @@ export function App() {
   const [personalDialog, setPersonalDialog] = useState<{
     item: DisplayItem | null;
     mode: LibraryItemDialogMode;
+    folderId?: string;
+    initialType?: ClipboardContentType;
   } | null>(null);
+  const [editorError, setEditorError] = useState<string | null>(null);
+  useEffect(() => { setEditorError(null); }, [personalDialog]);
   const [dialogSaving, setDialogSaving] = useState(false);
   const [pointerDrag, setPointerDrag] = useState<PointerDragVisual | null>(null);
   const requestSequence = useRef(0);
@@ -210,6 +223,7 @@ export function App() {
   const searchInput = useRef<HTMLInputElement>(null);
   const registeredHotkey = useRef<string | null>(null);
   const pointerDragSession = useRef<PointerDragSession | null>(null);
+  const suppressFolderClickUntil = useRef(0);
 
   const registerToggleHotkey = useCallback(async (requestedHotkey: string) => {
     if (!isTauri()) return true;
@@ -284,13 +298,14 @@ export function App() {
     setSearching(true);
     try {
       const [nextItems, nextTotal] = await Promise.all([
-        listClipboardItems({ query: debouncedQuery, filter }),
-        countClipboardItems({ query: debouncedQuery, filter }),
+        listClipboardItems({ query: debouncedQuery, filter, ...dateRange }),
+        countClipboardItems({ query: debouncedQuery, filter, ...dateRange }),
       ]);
       if (requestId !== requestSequence.current) return;
       setItems(nextItems);
       setTotalCount(nextTotal);
-      setAppliedCriteria({ query: debouncedQuery, filter });
+      setAppliedCriteria({ query: debouncedQuery, filter, date: selectedDate });
+      setCalendarRevision((value) => value + 1);
       setSelectedId((current) => {
         if (current && nextItems.some((item) => item.id === current)) return current;
         return nextItems[0]?.id ?? null;
@@ -305,7 +320,7 @@ export function App() {
         setSearching(false);
       }
     }
-  }, [debouncedQuery, filter]);
+  }, [debouncedQuery, filter, dateRange, selectedDate]);
   historyRefreshRef.current = refreshHistory;
 
   useEffect(() => {
@@ -359,6 +374,16 @@ export function App() {
     return () => { collectionSequence.current += 1; };
   }, [activeView, refreshCollection]);
 
+  useEffect(() => {
+    let disposed = false;
+    let unlisten = () => {};
+    void onLibraryChanged(() => {
+      void refreshFolders();
+      void (activeView.kind === "history" ? refreshHistory() : refreshCollection());
+    }).then((cleanup) => { if (disposed) cleanup(); else unlisten = cleanup; });
+    return () => { disposed = true; unlisten(); };
+  }, [activeView.kind, refreshCollection, refreshFolders, refreshHistory]);
+
   const historyDisplayItems = useMemo(
     () => items.map((item) => toDisplayItem(item, "history")),
     [items],
@@ -382,7 +407,8 @@ export function App() {
 
   const historyCriteriaPending = query !== debouncedQuery
     || appliedCriteria.query !== debouncedQuery
-    || appliedCriteria.filter !== filter;
+    || appliedCriteria.filter !== filter
+    || appliedCriteria.date !== selectedDate;
   const criteriaPending = activeView.kind === "history"
     ? historyCriteriaPending
     : query !== debouncedQuery;
@@ -394,8 +420,8 @@ export function App() {
     setLoadingMore(true);
     try {
       const [nextItems, nextTotal] = await Promise.all([
-        listClipboardItems({ query: debouncedQuery, filter, offset }),
-        countClipboardItems({ query: debouncedQuery, filter }),
+        listClipboardItems({ query: debouncedQuery, filter, offset, ...dateRange }),
+        countClipboardItems({ query: debouncedQuery, filter, ...dateRange }),
       ]);
       if (requestId !== requestSequence.current) return;
       setItems((current) => {
@@ -408,7 +434,7 @@ export function App() {
     } finally {
       setLoadingMore(false);
     }
-  }, [activeView.kind, criteriaPending, debouncedQuery, filter, items.length, loadingMore, totalCount]);
+  }, [activeView.kind, criteriaPending, debouncedQuery, filter, dateRange, items.length, loadingMore, totalCount]);
 
   const adjacentSelection = useCallback((list: DisplayItem[], id: string) => {
     const currentIndex = list.findIndex((item) => item.id === id);
@@ -566,12 +592,32 @@ export function App() {
     }
   }, [actionId, activeView, refreshCollection, refreshFolders]);
 
+  const reorderNavigationFolders = useCallback(async (sourceId: string, targetId: string, after = false) => {
+    if (actionId || dialogSaving) return;
+    const folderIds = movedItemIds(folders, sourceId, targetId, after);
+    if (!folderIds || folderIds.every((id, index) => id === folders[index].id)) return;
+    setActionId("folder:reorder");
+    try {
+      setFolders(await reorderFolders(folderIds));
+      setNotice({ message: "資料夾排序已保存", tone: "default" });
+    } catch {
+      setNotice({ message: "資料夾排序保存失敗，請再試一次", tone: "error" });
+      void refreshFolders();
+    } finally {
+      setActionId(null);
+    }
+  }, [actionId, dialogSaving, folders, refreshFolders]);
+
   const finishPointerDrag = useCallback((
-    payload: ItemDragPayload,
+    payload: PointerDragPayload,
     targetKey: string | null,
     reorderTargetId: string | null,
     reorderAfter: boolean,
   ) => {
+    if (payload.kind === "folder-navigation") {
+      if (reorderTargetId) void reorderNavigationFolders(payload.id, reorderTargetId, reorderAfter);
+      return;
+    }
     if (payload.kind === "history") {
       if (!targetKey) return;
       const target = collectionTargetFromKey(targetKey);
@@ -585,13 +631,15 @@ export function App() {
     ) {
       void reorderCollectionItems(payload.id, reorderTargetId, reorderAfter);
     }
-  }, [activeView.kind, handleDropClipboardItem, reorderCollectionItems]);
+  }, [activeView.kind, handleDropClipboardItem, reorderCollectionItems, reorderNavigationFolders]);
 
-  const startPointerDrag = useCallback((payload: ItemDragPayload, event: ReactPointerEvent<HTMLElement>) => {
+  const startPointerDrag = useCallback((payload: PointerDragPayload, event: ReactPointerEvent<HTMLElement>) => {
     if (
       actionId
-      || !["history", "folder", "personal"].includes(payload.kind)
+      || dialogSaving
+      || !["history", "folder", "personal", "folder-navigation"].includes(payload.kind)
       || event.button !== 0
+      || !event.isPrimary
       || pointerDragSession.current
     ) return;
 
@@ -603,19 +651,15 @@ export function App() {
       dragging: false,
     };
 
-    const handleMove = (move: globalThis.PointerEvent) => {
-      if (pointerDragSession.current !== session || move.pointerId !== session.pointerId) return;
-      if (!session.dragging) {
-        const distance = Math.hypot(move.clientX - session.startX, move.clientY - session.startY);
-        if (distance < 6) return;
-        session.dragging = true;
-      }
-      move.preventDefault();
-      const reorderTarget = pointerReorderTargetAt(move.clientX, move.clientY);
+    let clientX = event.clientX;
+    let clientY = event.clientY;
+    let scrollFrame = 0;
+    const updateDragTarget = () => {
+      const reorderTarget = pointerReorderTargetAt(clientX, clientY, session.payload.kind === "folder-navigation");
       setPointerDrag({
         payload: session.payload,
         targetKey: session.payload.kind === "history"
-          ? pointerDropTargetAt(move.clientX, move.clientY)
+          ? pointerDropTargetAt(clientX, clientY)
           : null,
         reorderTargetId: reorderTarget?.id && reorderTarget.id !== session.payload.id
           ? reorderTarget.id
@@ -626,11 +670,35 @@ export function App() {
       });
     };
 
+    const handleMove = (move: globalThis.PointerEvent) => {
+      if (pointerDragSession.current !== session || move.pointerId !== session.pointerId) return;
+      clientX = move.clientX; clientY = move.clientY;
+      if (!session.dragging) {
+        if (Math.hypot(clientX - session.startX, clientY - session.startY) < 6) return;
+        session.dragging = true;
+      }
+      move.preventDefault();
+      updateDragTarget();
+    };
+
+    const scrollNavigation = () => {
+      if (session.dragging) {
+        const nav = document.querySelector<HTMLElement>(".sidebar nav");
+        const bounds = nav?.getBoundingClientRect();
+        if (nav && bounds && clientX >= bounds.left && clientX <= bounds.right && clientY >= bounds.top && clientY <= bounds.bottom) {
+          const delta = clientY < bounds.top + 28 ? -8 : clientY > bounds.bottom - 28 ? 8 : 0;
+          if (delta) { nav.scrollTop += delta; updateDragTarget(); }
+        }
+      }
+      scrollFrame = window.requestAnimationFrame(scrollNavigation);
+    };
+
     const handleEnd = (end: globalThis.PointerEvent) => {
       if (pointerDragSession.current !== session || end.pointerId !== session.pointerId) return;
       const wasDragging = session.dragging && end.type === "pointerup";
       const targetKey = wasDragging ? pointerDropTargetAt(end.clientX, end.clientY) : null;
-      const reorderTarget = wasDragging ? pointerReorderTargetAt(end.clientX, end.clientY) : null;
+      const reorderTarget = wasDragging ? pointerReorderTargetAt(end.clientX, end.clientY, session.payload.kind === "folder-navigation") : null;
+      if (session.dragging && session.payload.kind === "folder-navigation") suppressFolderClickUntil.current = Date.now() + 250;
       session.cleanup?.();
       if (wasDragging) {
         finishPointerDrag(
@@ -642,10 +710,20 @@ export function App() {
       }
     };
 
+    const handleCancel = () => {
+      if (session.dragging && session.payload.kind === "folder-navigation") suppressFolderClickUntil.current = Date.now() + 250;
+      session.cleanup?.();
+    };
+    const handleEscape = (key: KeyboardEvent) => {
+      if (key.key === "Escape") { key.preventDefault(); handleCancel(); }
+    };
     session.cleanup = () => {
+      window.cancelAnimationFrame(scrollFrame);
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleEnd);
       window.removeEventListener("pointercancel", handleEnd);
+      window.removeEventListener("blur", handleCancel);
+      window.removeEventListener("keydown", handleEscape);
       pointerDragSession.current = null;
       setPointerDrag(null);
     };
@@ -653,7 +731,10 @@ export function App() {
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleEnd);
     window.addEventListener("pointercancel", handleEnd);
-  }, [actionId, finishPointerDrag]);
+    window.addEventListener("blur", handleCancel);
+    window.addEventListener("keydown", handleEscape);
+    if (payload.kind === "folder-navigation") scrollFrame = window.requestAnimationFrame(scrollNavigation);
+  }, [actionId, dialogSaving, finishPointerDrag]);
 
   useEffect(() => () => {
     pointerDragSession.current?.cleanup?.();
@@ -703,36 +784,37 @@ export function App() {
     title: string,
     content: string | null,
     contentType: ClipboardContentType,
+    imageBase64?: string,
   ) => {
     if (dialogSaving || !personalDialog) return;
     const dialogMode = personalDialog.mode;
-    setDialogSaving(true);
+    setDialogSaving(true); setEditorError(null);
     try {
-      if (personalDialog.item) {
-        if (dialogMode === "folder") {
-          await updateFolderItem(personalDialog.item.id, title, content, contentType);
-          setNotice({ message: "資料夾內容已更新", tone: "default" });
-        } else {
-          await updatePersonalItem(personalDialog.item.id, title, content, contentType);
-          setNotice({ message: "常用片段已更新", tone: "default" });
-        }
-      } else {
-        await createPersonalItem(title, content || "", contentType);
-        setNotice({ message: "常用片段已新增", tone: "default" });
-      }
+      const saved = await saveManualItem({ storage: dialogMode, id: personalDialog.item?.id,
+        folderId: personalDialog.folderId, title, content, contentType, imageBase64,
+        pinned: !personalDialog.item && filter === "PINNED" });
       setPersonalDialog(null);
-      if (activeView.kind === dialogMode) await refreshCollection();
-    } catch {
-      setNotice({
-        message: dialogMode === "folder"
-          ? "資料夾內容儲存失敗，請檢查名稱與內容"
-          : "常用片段儲存失敗，請檢查標題與內容",
-        tone: "error",
-      });
-    } finally {
-      setDialogSaving(false);
-    }
-  }, [activeView.kind, dialogSaving, personalDialog, refreshCollection]);
+      setQuery(""); setDebouncedQuery("");
+      if (dialogMode === "history") {
+        setSelectedDate(null);
+        setFilter("ALL"); setActiveView({ kind: "history", filter: "ALL" });
+        await refreshHistory();
+      } else if (activeView.kind === dialogMode) await refreshCollection();
+      else if (dialogMode === "personal") setActiveView({ kind: "personal" });
+      await refreshFolders();
+      setSelectedId(saved.id);
+      setNotice({ message: personalDialog.item ? "內容已更新" : "內容已新增", tone: "default" });
+    } catch (error) {
+      setEditorError("儲存失敗，內容仍保留，可重試。" + String(error));
+    } finally { setDialogSaving(false); }
+  }, [activeView.kind, filter, dialogSaving, personalDialog, refreshCollection, refreshHistory, refreshFolders]);
+
+  const openNewItem = useCallback(() => {
+    const initialType: ClipboardContentType = activeView.kind === "history"
+      ? ({ IMAGES: "IMAGE", LINKS: "URL", CODE: "CODE", PATHS: "FILE_PATH", EMAIL: "EMAIL", IP: "IP" } as Partial<Record<ClipboardFilter, ClipboardContentType>>)[filter] ?? "TEXT" : "TEXT";
+    setPersonalDialog({ item: null, mode: activeView.kind, initialType,
+      folderId: activeView.kind === "folder" ? activeView.folderId : undefined });
+  }, [activeView, filter]);
 
   useEffect(() => {
     if (!notice) return;
@@ -754,6 +836,7 @@ export function App() {
     const handleKeyboard = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       const target = event.target as HTMLElement | null;
+      if (target?.closest("[role='separator']") && !event.ctrlKey) return;
       const isSearch = target === searchInput.current;
 
       if (event.ctrlKey && event.key === ",") {
@@ -773,7 +856,7 @@ export function App() {
 
       if (event.ctrlKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        setPersonalDialog({ item: null, mode: "personal" });
+        openNewItem();
         return;
       }
 
@@ -825,14 +908,14 @@ export function App() {
     };
     window.addEventListener("keydown", handleKeyboard);
     return () => window.removeEventListener("keydown", handleKeyboard);
-  }, [activeView, criteriaPending, displayItems, folderDialog, personalDialog, onboardingOpen, query, runCollectionAction, runCollectionCopy, runItemAction, selectedId, settingsOpen]);
+  }, [openNewItem, activeView, criteriaPending, displayItems, folderDialog, personalDialog, onboardingOpen, query, runCollectionAction, runCollectionCopy, runItemAction, selectedId, settingsOpen]);
 
   const isHistoryView = activeView.kind === "history";
   const activeFolder = activeView.kind === "folder"
     ? folders.find((folder) => folder.id === activeView.folderId)
     : null;
   const activeTitle = isHistoryView
-    ? filterLabels[filter]
+    ? selectedDate ? `${selectedDate.slice(5).replace("-", " / ")} · ${filterLabels[filter]}` : filterLabels[filter]
     : activeView.kind === "folder"
       ? activeFolder?.name || "資料夾"
       : "常用片段";
@@ -843,14 +926,23 @@ export function App() {
   const currentTotal = isHistoryView ? totalCount : currentItems.length;
   const currentLoading = isHistoryView ? loading : collectionLoading;
   const currentError = isHistoryView ? error : collectionError;
-  const hasCriteria = isHistoryView ? Boolean(query.trim()) || filter !== "ALL" : Boolean(query.trim());
+  const hasCriteria = isHistoryView ? Boolean(query.trim()) || filter !== "ALL" || Boolean(selectedDate) : Boolean(query.trim());
 
   return (
     <main
-      className="app-frame"
+      ref={layout.frameRef}
+      style={layout.style}
+      data-resizing={layout.resizing || undefined}
+      className={`app-frame${isHistoryView ? " has-calendar" : ""}`}
       data-text-scale={textScale}
       data-pointer-dragging={pointerDrag ? "true" : undefined}
+      onClickCapture={(event) => {
+        if (Date.now() < suppressFolderClickUntil.current && (event.target as HTMLElement).closest(".nav-folder-row")) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
     >
+      {layout.dividers}
       <header className="topbar">
         <label className="topbar-search">
           <Search size={16} aria-hidden="true" />
@@ -884,20 +976,43 @@ export function App() {
           <button
             type="button"
             className="new-snippet-button"
-            onClick={() => setPersonalDialog({ item: null, mode: "personal" })}
-            title="新增常用片段（Ctrl N）"
+            onClick={() => openNewItem()}
+            title="在目前類別新增內容（Ctrl N）"
           >
-            <Plus size={16} /><span>新增片段</span>
+            <Plus size={16} /><span>新增內容</span>
           </button>
         </div>
       </header>
 
+      {isHistoryView && <ClipboardCalendar selectedDate={selectedDate} timeLabel={["TODAY", "YESTERDAY", "THIS_WEEK", "OLDER"].includes(filter) ? filterLabels[filter] : undefined} revision={calendarRevision} onSelectDate={(date) => {
+        requestSequence.current += 1;
+        setSelectedDate(date);
+        setDeleteArmedId(null);
+        const nextFilter = ["TODAY", "YESTERDAY", "THIS_WEEK", "OLDER"].includes(filter) ? "ALL" : filter;
+        setFilter(nextFilter);
+        setActiveView({ kind: "history", filter: nextFilter });
+      }} />}
+
       <div className="workspace">
         <Sidebar
           activeFilter={filter}
+          selectedDate={selectedDate}
+          onTimeFilterChange={(nextFilter) => {
+            requestSequence.current += 1;
+            setSelectedDate(null);
+            setDeleteArmedId(null);
+            setFilter(nextFilter);
+            setActiveView({ kind: "history", filter: nextFilter });
+          }}
           activeView={activeView}
           folders={folders}
           pointerDropTarget={pointerDrag?.targetKey ?? null}
+          folderDraggingId={pointerDrag?.payload.kind === "folder-navigation" ? pointerDrag.payload.id : null}
+          folderReorderTargetId={pointerDrag?.payload.kind === "folder-navigation" ? pointerDrag.reorderTargetId : null}
+          folderReorderAfter={pointerDrag?.payload.kind === "folder-navigation" ? pointerDrag.reorderAfter : false}
+          folderSortingDisabled={Boolean(actionId) || dialogSaving}
+          onStartFolderDrag={(id, event) => startPointerDrag({ id, kind: "folder-navigation" }, event)}
+          onMoveFolder={reorderNavigationFolders}
           onFilterChange={(nextFilter) => {
             setDeleteArmedId(null);
             setFilter(nextFilter);
@@ -932,26 +1047,26 @@ export function App() {
           hasCriteria={hasCriteria}
           activeFilterLabel={activeTitle}
           panelKicker={isHistoryView ? "CLIPBOARD" : "COLLECTION"}
-          headerAction={activeView.kind === "personal" ? (
+          headerAction={(
             <button
               type="button"
               className="panel-action"
-              onClick={() => setPersonalDialog({ item: null, mode: "personal" })}
-              title="新增常用片段"
+              onClick={() => openNewItem()}
+              title="在目前類別新增內容"
             >
               <Plus size={14} />
               <span>新增</span>
             </button>
-          ) : undefined}
-          emptyTitle={hasCriteria ? undefined : isHistoryView ? "美好的工作，從複製開始" : activeView.kind === "folder" ? "留個位置給重要內容" : "把常用的話，放在手邊"}
-          emptyDescription={hasCriteria ? undefined : isHistoryView
+          )}
+          emptyTitle={isHistoryView && selectedDate ? "這一天沒有符合的紀錄" : hasCriteria ? undefined : isHistoryView ? "美好的工作，從複製開始" : activeView.kind === "folder" ? "留個位置給重要內容" : "把常用的話，放在手邊"}
+          emptyDescription={isHistoryView && selectedDate ? "試試其他分類或日期，也可以切回全部時間。" : hasCriteria ? undefined : isHistoryView
             ? "複製文字或圖片後，它會立刻出現在這裡並只保存在這台電腦。"
             : activeView.kind === "folder"
-              ? "在剪貼紀錄選擇內容，按「保存到」或拖到此資料夾。"
+              ? "直接新增文字或圖片，也可從剪貼紀錄保存到此資料夾。"
               : "新增常用文字，或從剪貼紀錄保存，隨時一鍵複製。"}
-          emptyAction={activeView.kind === "personal" && !hasCriteria ? (
-            <button type="button" className="state-action" onClick={() => setPersonalDialog({ item: null, mode: "personal" })}>
-              <Plus size={14} />建立第一個片段
+          emptyAction={!hasCriteria ? (
+            <button type="button" className="state-action" onClick={() => openNewItem()}>
+              <Plus size={14} />新增內容
             </button>
           ) : undefined}
           viewKind={activeView.kind}
@@ -989,8 +1104,8 @@ export function App() {
           }}
           onRemove={(id) => void runCollectionAction(id)}
           onEdit={(id) => {
-            const item = collectionItems.find((candidate) => candidate.id === id);
-            if ((activeView.kind === "personal" || activeView.kind === "folder") && item) {
+            const item = displayItems.find((candidate) => candidate.id === id);
+            if (item) {
               setPersonalDialog({ item, mode: activeView.kind });
             }
           }}
@@ -1051,9 +1166,11 @@ export function App() {
         <PersonalItemDialog
           item={personalDialog.item}
           mode={personalDialog.mode}
+          initialType={personalDialog.initialType}
+          error={editorError}
           saving={dialogSaving}
           onClose={() => setPersonalDialog(null)}
-          onSubmit={(title, content, contentType) => void handlePersonalSubmit(title, content, contentType)}
+          onSubmit={(title, content, contentType, imageBase64) => void handlePersonalSubmit(title, content, contentType, imageBase64)}
         />
       )}
     </main>

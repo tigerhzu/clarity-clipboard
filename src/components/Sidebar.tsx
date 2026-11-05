@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  CalendarDays,
   Code2,
   Clock3,
   FileText,
@@ -18,10 +17,11 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import type { DragEvent } from "react";
+import type { DragEvent, PointerEvent } from "react";
 import { clearItemDragPayload, CLIPBOARD_ITEM_DRAG_TYPE, readItemDragPayload } from "../lib/drag";
 import type { ClipboardFilter, Folder as FolderModel } from "../types/clipboard";
 import "./navigation.css";
+import { TimeFilter } from "./TimeFilter";
 
 const contentFilters = [
   { value: "ALL", label: "全部", icon: Inbox },
@@ -36,12 +36,6 @@ const contentFilters = [
 ] as const;
 
 const timeFilters = ["TODAY", "YESTERDAY", "THIS_WEEK", "OLDER"] as const;
-const timeFilterLabels: Record<(typeof timeFilters)[number], string> = {
-  TODAY: "今天",
-  YESTERDAY: "昨天",
-  THIS_WEEK: "本週",
-  OLDER: "更早",
-};
 
 export type SidebarSelection =
   | { kind: "history"; filter: ClipboardFilter }
@@ -49,10 +43,18 @@ export type SidebarSelection =
   | { kind: "personal" };
 
 interface SidebarProps {
+  selectedDate: string | null;
+  onTimeFilterChange: (filter: ClipboardFilter) => void;
   activeFilter: ClipboardFilter;
   activeView: SidebarSelection;
   folders: FolderModel[];
   pointerDropTarget: string | null;
+  folderDraggingId: string | null;
+  folderReorderTargetId: string | null;
+  folderReorderAfter: boolean;
+  folderSortingDisabled: boolean;
+  onStartFolderDrag: (id: string, event: PointerEvent<HTMLElement>) => void;
+  onMoveFolder: (id: string, targetId: string, after: boolean) => void;
   onFilterChange: (filter: ClipboardFilter) => void;
   onSelectFolder: (folderId: string) => void;
   onSelectPersonal: () => void;
@@ -74,10 +76,18 @@ function isInternalDrag(event: DragEvent<HTMLElement>): boolean {
 }
 
 export function Sidebar({
+  selectedDate,
+  onTimeFilterChange,
   activeFilter,
   activeView,
   folders,
   pointerDropTarget,
+  folderDraggingId,
+  folderReorderTargetId,
+  folderReorderAfter,
+  folderSortingDisabled,
+  onStartFolderDrag,
+  onMoveFolder,
   onFilterChange,
   onSelectFolder,
   onSelectPersonal,
@@ -124,7 +134,7 @@ export function Sidebar({
   const activeContentFilter = isTimeFilter ? "ALL" : activeFilter;
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" id="workspace-sidebar">
       <nav aria-label="剪貼簿分類">
         <section className="nav-section" aria-label="工作空間">
           <h2>工作空間</h2>
@@ -194,13 +204,14 @@ export function Sidebar({
                 <Plus size={14} /><span>建立第一個資料夾</span>
               </button>
             )}
-            {folders.map((folder) => {
+            {folders.map((folder, index) => {
               const targetKey = `folder:${folder.id}`;
               const active = activeView.kind === "folder" && activeView.folderId === folder.id;
               return (
                 <div
-                  className={`nav-folder-row${active ? " active" : ""}${isDropTarget(targetKey) ? " drop-target" : ""}`}
+                  className={`nav-folder-row${active ? " active" : ""}${isDropTarget(targetKey) ? " drop-target" : ""}${folderDraggingId === folder.id ? " folder-dragging" : ""}${folderReorderTargetId === folder.id ? ` folder-drag-over${folderReorderAfter ? " folder-drag-after" : ""}` : ""}`}
                   data-clipboard-drop-target={targetKey}
+                  data-folder-reorder-target={folder.id}
                   key={folder.id}
                   onDragEnter={(event) => handleDragOver(event, targetKey)}
                   onDragOver={(event) => handleDragOver(event, targetKey)}
@@ -212,7 +223,16 @@ export function Sidebar({
                     type="button"
                     aria-current={active ? "page" : undefined}
                     onClick={() => onSelectFolder(folder.id)}
-                    title={`${folder.name}（${folder.itemCount} 筆）`}
+                    onPointerDown={(event) => onStartFolderDrag(folder.id, event)}
+                    onKeyDown={(event) => {
+                      if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+                      event.preventDefault();
+                      if (folderSortingDisabled) return;
+                      const next = folders[index + (event.key === "ArrowUp" ? -1 : 1)];
+                      if (next) onMoveFolder(folder.id, next.id, event.key === "ArrowDown");
+                    }}
+                    aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                    title={`${folder.name}（${folder.itemCount} 筆）· 按住上下拖曳排序，或 Alt + ↑ / ↓`}
                   >
                     <Folder size={16} />
                     <span title={folder.name}>{folder.name}</span>
@@ -264,18 +284,8 @@ export function Sidebar({
               );
             })}
           </div>
-          <label className="sidebar-time-filter">
-            <CalendarDays size={14} aria-hidden="true" />
-            <span>時間</span>
-            <select
-              aria-label="時間篩選"
-              value={isTimeFilter ? activeFilter : "ALL"}
-              onChange={(event) => onFilterChange(event.target.value as ClipboardFilter)}
-            >
-              <option value="ALL">全部時間</option>
-              {timeFilters.map((value) => <option key={value} value={value}>{timeFilterLabels[value]}</option>)}
-            </select>
-          </label>
+          <TimeFilter value={isTimeFilter ? activeFilter : "ALL"}
+            selectedDate={activeView.kind === "history" ? selectedDate : null} onChange={onTimeFilterChange} />
         </section>
       </nav>
 

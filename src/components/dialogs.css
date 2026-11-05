@@ -58,6 +58,11 @@
 .cc-settings-tabs > button:hover:not(:disabled) { background: var(--surface-raised); }
 .cc-settings-body { min-height: 290px; padding-top: 24px; }
 .cc-settings-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+.cc-hermes-field { margin-top: 20px; }
+.cc-modal .cc-hermes-field textarea { resize: none; height: 168px; overflow-wrap: anywhere; }
+.cc-hermes-copy { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.cc-hermes-copy > span { color: var(--dialog-muted); font-size: var(--font-xs, 11px); }
+.cc-hermes-loading { display: flex; align-items: center; gap: 8px; margin-top: 16px !important; color: var(--dialog-muted); }
 .cc-setting-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
 .cc-setting-heading > svg { flex-shrink: 0; color: var(--dialog-primary); margin-top: 3px; }
 .cc-setting-heading h3 { font-size: var(--font-md, 13px); font-weight: 600; }
@@ -79,6 +84,11 @@
 .cc-modal .cc-switch::after { content: ""; position: absolute; width: 15px; height: 15px; left: 2px; top: 2px; border-radius: 50%; background: var(--ink); box-shadow: 0 1px 2px #00000033; transition: transform 120ms ease; }
 .cc-modal .cc-switch:checked { background: var(--dialog-primary); border-color: var(--dialog-primary); }
 .cc-modal .cc-switch:checked::after { transform: translateX(15px); background: var(--action-ink); }
+.cc-protected-exclusion { display: flex; align-items: center; gap: 9px; margin-top: 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--accent-soft); color: var(--dialog-ink); }
+.cc-protected-exclusion > svg { flex-shrink: 0; color: var(--dialog-primary); }
+.cc-protected-exclusion > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cc-protected-exclusion strong { font-family: "Cascadia Code", Consolas, monospace; font-size: var(--font-sm, 12px); font-weight: 600; }
+.cc-protected-exclusion small { color: var(--dialog-muted); font-size: var(--font-xs, 11px); }
 .cc-excluded-field { margin-top: 22px; }
 .cc-modal .cc-excluded-field textarea { min-height: 108px; font-family: "Cascadia Code", Consolas, monospace; font-size: var(--font-sm, 12px); }
 .cc-discard-body { padding-top: 5px; color: var(--dialog-muted); font-size: var(--font-md, 13px); }
@@ -135,3 +145,6 @@
   .cc-welcome-hotkey { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { .cc-modal *, .cc-modal *::after { transition: none !important; } }
+
+.cc-image-editor { display: grid; gap: 10px; margin-top: 18px; }
+.cc-image-editor > img { display: block; max-width: 100%; width: 100%; height: 160px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); }

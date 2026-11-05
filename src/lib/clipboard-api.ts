@@ -16,6 +16,15 @@ interface ListClipboardOptions {
   filter?: ClipboardFilter;
   limit?: number;
   offset?: number;
+  startMs?: number;
+  endMs?: number;
+}
+
+export async function saveManualItem(input: {
+  storage: ItemStorage; id?: string; folderId?: string; title: string;
+  content: string | null; contentType: string; imageBase64?: string; pinned?: boolean;
+}): Promise<ClipboardItem> {
+  return invoke<ClipboardItem>("save_manual_item", { input });
 }
 
 export async function listClipboardItems({
@@ -23,22 +32,48 @@ export async function listClipboardItems({
   filter = "ALL",
   limit = 250,
   offset = 0,
+  startMs,
+  endMs,
 }: ListClipboardOptions = {}): Promise<ClipboardItem[]> {
   if (!isTauri()) return [];
-  return invoke<ClipboardItem[]>("list_clipboard_items", { query, filter, limit, offset });
+  return invoke<ClipboardItem[]>("list_clipboard_items", { query, filter, limit, offset, startMs, endMs });
 }
 
 export async function countClipboardItems({
   query = "",
   filter = "ALL",
+  startMs,
+  endMs,
 }: Omit<ListClipboardOptions, "limit" | "offset"> = {}): Promise<number> {
   if (!isTauri()) return 0;
-  return invoke<number>("count_clipboard_items", { query, filter });
+  return invoke<number>("count_clipboard_items", { query, filter, startMs, endMs });
+}
+
+export interface ClipboardDay { date: string; count: number }
+
+export async function listClipboardDays(startMs: number, endMs: number): Promise<ClipboardDay[]> {
+  if (!isTauri()) return [];
+  return invoke<ClipboardDay[]>("list_clipboard_days", { startMs, endMs });
 }
 
 export async function onClipboardChanged(callback: () => void): Promise<UnlistenFn> {
   if (!isTauri()) return () => undefined;
   return listen("clipboard://changed", callback);
+}
+
+export async function onLibraryChanged(callback: () => void): Promise<UnlistenFn> {
+  if (!isTauri()) return () => undefined;
+  return listen("clarity://library-changed", callback);
+}
+
+export interface HermesIntegrationInfo { available: boolean; error: string | null; prompt: string }
+
+export async function getHermesIntegration(): Promise<HermesIntegrationInfo> {
+  return invoke<HermesIntegrationInfo>("get_hermes_integration");
+}
+
+export async function copyHermesPrompt(): Promise<void> {
+  return invoke<void>("copy_hermes_prompt");
 }
 
 export async function toggleClipboardPin(id: string): Promise<ClipboardItem> {
@@ -86,6 +121,10 @@ export async function getClipboardImage(id: string, thumbnail = false): Promise<
 export async function listFolders(): Promise<Folder[]> {
   if (!isTauri()) return [];
   return invoke<Folder[]>("list_folders");
+}
+
+export async function reorderFolders(folderIds: string[]): Promise<Folder[]> {
+  return invoke<Folder[]>("reorder_folders", { folderIds });
 }
 
 export async function createFolder(name: string): Promise<Folder> {

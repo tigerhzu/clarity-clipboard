@@ -116,6 +116,7 @@ mod tests {
                 sensitive_filter_enabled: true,
                 text_scale: 120,
                 hotkey: "Alt+Z".into(),
+                hermes_enabled: false,
             })
             .unwrap();
         let old_time = Utc::now().timestamp_millis() - 8 * 86_400_000;
