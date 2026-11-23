@@ -78,8 +78,11 @@ export interface ClipboardImageMetadata {
 }
 
 export type ClipboardTextScale = 100 | 120 | 150;
+export type ClipboardColorTheme = "dark" | "light";
 
 export interface ClipboardSettings {
+  colorTheme: ClipboardColorTheme;
+  launchAtLogin: boolean;
   hermesEnabled: boolean;
   retentionDays: 7 | 14 | 30 | null;
   excludedApps: string[];

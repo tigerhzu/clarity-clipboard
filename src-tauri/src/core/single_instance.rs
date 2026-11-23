@@ -44,7 +44,15 @@ fn wide(value: &str) -> Vec<u16> {
 
 impl SingleInstance {
     /// None means an existing process was notified and this launch must exit.
+    #[cfg(test)]
     pub fn acquire(identifier: &str) -> io::Result<Option<Self>> {
+        Self::acquire_with_activation(identifier, true)
+    }
+
+    pub fn acquire_with_activation(
+        identifier: &str,
+        activate_existing: bool,
+    ) -> io::Result<Option<Self>> {
         // Create/open the event first so even an activation before setup is retained.
         let event_name = wide(&format!("Local\\{identifier}.Activate"));
         let activate =
@@ -54,7 +62,7 @@ impl SingleInstance {
         let already_exists = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
         let gate = OwnedHandle::new(handle)?;
         if already_exists {
-            if unsafe { SetEvent(activate.raw()) } == 0 {
+            if activate_existing && unsafe { SetEvent(activate.raw()) } == 0 {
                 return Err(io::Error::last_os_error());
             }
             return Ok(None);
@@ -89,6 +97,19 @@ impl SingleInstance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_duplicate_does_not_show_existing_window() {
+        let id = format!("clarity-test-{}", uuid::Uuid::new_v4());
+        let first = SingleInstance::acquire(&id).unwrap().unwrap();
+        assert!(SingleInstance::acquire_with_activation(&id, false)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            unsafe { WaitForSingleObject(first.activate.raw(), 0) },
+            windows_sys::Win32::Foundation::WAIT_TIMEOUT
+        );
+    }
 
     #[test]
     fn duplicates_signal_before_listener_starts_and_gate_releases_on_exit() {

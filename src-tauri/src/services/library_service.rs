@@ -825,6 +825,8 @@ mod tests {
         let settings = SettingsService::initialize(directory.path().join("settings.json")).unwrap();
         settings
             .update(AppSettings {
+                color_theme: "dark".into(),
+                launch_at_login: false,
                 retention_days: Some(7),
                 excluded_apps: Vec::new(),
                 sensitive_filter_enabled: true,

@@ -30,7 +30,7 @@ export function createFixture({ empty = false, textScale = 120, extraRows = 0, b
   const personal = [{ ...item("personal-reply", "TEXT", "收到，謝謝提供資料。\n我會確認內容，再與您回覆後續安排。", 1800, { customName: "常用回覆", sourceApp: null, sourceProcess: null, sourceWindow: null }), title: "常用回覆", sourceItemId: null, sortOrder: 0 },
     { ...item("personal-command", "COMMAND", "git status --short", 1801, { customName: "查看工作進度", sourceApp: null, sourceProcess: null, sourceWindow: null }), title: "查看工作進度", sourceItemId: null, sortOrder: 1 }];
   return { history: empty ? [] : history, folders: empty ? [] : folders, folderItems: empty ? [] : folderItems,
-    personal: empty ? [] : personal, settings: { retentionDays: 30, excludedApps: ["1Password.exe", "Bitwarden.exe", "KeePass.exe", "KeePassXC.exe", "mstsc.exe"], sensitiveFilterEnabled: true, textScale, hotkey: "Alt+Z", hermesEnabled: false },
+    personal: empty ? [] : personal, settings: { colorTheme: "dark", launchAtLogin: true, retentionDays: 30, excludedApps: ["1Password.exe", "Bitwarden.exe", "KeePass.exe", "KeePassXC.exe", "mstsc.exe"], sensitiveFilterEnabled: true, textScale, hotkey: "Alt+Z", hermesEnabled: false },
     hermesInfo: { available: true, error: null, prompt: "請幫我串接這台電腦的剪貼後台。使用 clarity-clipboard.exe --mcp，保留現有 Hermes 設定，呼叫 clarity_status 驗證。" },
     copies: [], calls: [], failCommands: [], nextId: 1 };
 }
@@ -98,6 +98,8 @@ export function installTauriFixture({ fixture, persist = true, historyError = fa
       }
       let result;
       switch (command) {
+        case "get_export_directory": result = "C:\\Reports"; break;
+        case "export_clipboard_csv": result = { directory: "C:\\Reports\\synthetic", csvPath: "C:\\Reports\\synthetic\\clipboard.csv", xlsxPath: "C:\\Reports\\synthetic\\clipboard.xlsx", sheetCount: 2, embeddedImageCount: 1, itemCount: 3, rowCount: 4, imageCount: 1, warnings: ["history/missing：圖片未匯出"] }; break;
         case "save_manual_item": {
           const input = args.input;
           const store = input.storage === "history" ? state.history : input.storage === "folder" ? state.folderItems : state.personal;

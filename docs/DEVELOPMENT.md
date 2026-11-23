@@ -75,6 +75,7 @@ node tests/folder-order.mjs
 node tests/calendar.mjs
 node tests/workspace-layout.mjs
 node tests/hermes-settings.mjs
+node tests/export-settings.mjs
 ```
 
 腳本也會嘗試使用環境既有的 Playwright 或 Codex bundled runtime。可選環境變數：
@@ -98,6 +99,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/single-instance.ps
 ```
 
 上述設定只用於測試；交付安裝包仍使用原本識別碼的正式建置。
+
+匯出 CLI 可在正式執行檔建置後執行 `node tests/export-cli.mjs`（Node.js 22 的內建 SQLite）。測試自行將 APPDATA 指向 `target` 下的合成資料，驗證原生 Excel/CSV CLI、JSON 回傳、XLSX 與原圖、空結果、錯誤與 PowerShell 排程腳本；不啟動 UI，不讀取真實剪貼簿，也不修改登入啟動登錄。`tests/export-settings.mjs` 驗證配色儲存／取消／重載及匯出 DOM 與互動、不截圖；需要人工視覺檢查時可使用瀏覽器工具開啟開發伺服器的 `/tests/export-preview.html` 合成頁面。
 
 Hermes 原生 MCP 驗證使用另一個獨立識別碼、隱藏視窗及合成文字／圖片。
 先建立測試執行檔，再使用 Python 3.10+ 執行 stdio 測試；測試不安裝程式或覆寫 Windows 剪貼簿。

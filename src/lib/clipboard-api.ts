@@ -20,6 +20,21 @@ interface ListClipboardOptions {
   endMs?: number;
 }
 
+export interface ExportOptions {
+  startDate: string; endDate: string; outputDirectory: string;
+  storage: ItemStorage | "all"; tag?: string;
+}
+export interface ExportResult {
+  directory: string; csvPath: string; xlsxPath: string; sheetCount: number; embeddedImageCount: number; itemCount: number; rowCount: number;
+  imageCount: number; warnings: string[];
+}
+export async function exportClipboardCsv(options: ExportOptions): Promise<ExportResult> {
+  return invoke<ExportResult>("export_clipboard_csv", { options });
+}
+export async function getExportDirectory(): Promise<string> {
+  return invoke<string>("get_export_directory");
+}
+
 export async function saveManualItem(input: {
   storage: ItemStorage; id?: string; folderId?: string; title: string;
   content: string | null; contentType: string; imageBase64?: string; pinned?: boolean;

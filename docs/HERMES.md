@@ -34,6 +34,7 @@ mcp_servers:
 | `clarity_save_item` | 新增／編輯歷史、常用片段或資料夾文字／圖片；預設 personal |
 | `clarity_delete_item` | 刪除指定 storage／ID 的一筆項目 |
 | `clarity_copy_item` | 把指定文字或圖片寫入 Windows 剪貼簿 |
+| `clarity_export_excel`（舊名 `clarity_export_csv` 也支援） | 依日期／tag 匯出本機 彩色 Excel（類型分頁、內嵌圖片）、CSV 與原圖，回傳路徑及數量；[零 AI 排程入口](EXPORT.md) |
 
 歷史的 `filter` 支援分類、釘選及 TODAY／YESTERDAY／THIS_WEEK／OLDER；日期依本機時區。資料夾搜尋必須有 `folderId`，可先列出資料夾。文字搜尋摘要限 300 字元，完整內容再個別取得，避免一次將所有歷史放入模型上下文。編輯必須提供原 ID 和完整標題、內容、類型；新增 folder 項目需要 folderId。圖片新增／替換使用純 base64，文字與圖片驗證沿用介面的服務。
 

@@ -6,6 +6,7 @@ import { ConfirmFolderDeleteDialog, FolderDialog } from "../components/FolderDia
 import { HistoryList } from "../components/HistoryList";
 import { ClipboardCalendar } from "../components/ClipboardCalendar";
 import { dayRange } from "../lib/calendar";
+import { applyColorTheme } from "../lib/theme";
 import { useWorkspaceLayout } from "../components/WorkspaceLayout";
 import { PersonalItemDialog, type LibraryItemDialogMode } from "../components/PersonalItemDialog";
 import { PreviewPane } from "../components/PreviewPane";
@@ -184,6 +185,9 @@ export function App() {
   const [collectionError, setCollectionError] = useState<string | null>(null);
   const [textScale, setTextScale] = useState<ClipboardTextScale>(120);
   const [clipboardSettings, setClipboardSettings] = useState<ClipboardSettings | null>(null);
+  useEffect(() => {
+    if (clipboardSettings) applyColorTheme(clipboardSettings.colorTheme);
+  }, [clipboardSettings]);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");

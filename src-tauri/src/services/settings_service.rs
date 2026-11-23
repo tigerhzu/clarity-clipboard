@@ -16,10 +16,26 @@ const PROTECTED_EXCLUDED_APP: &str = "1Password.exe";
 const PROTECTED_EXCLUDED_KEY: &str = "1password";
 const MAX_EXCLUDED_APPS: usize = 100;
 
+pub fn apply_window_theme(app: &tauri::AppHandle, theme: &str) {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main") {
+        let theme = if theme == "light" {
+            tauri::Theme::Light
+        } else {
+            tauri::Theme::Dark
+        };
+        if let Err(error) = window.set_theme(Some(theme)) {
+            eprintln!("Could not apply window theme: {error}");
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
+    pub color_theme: String,
+    pub launch_at_login: bool,
     pub retention_days: Option<u32>,
     pub excluded_apps: Vec<String>,
     pub sensitive_filter_enabled: bool,
@@ -31,6 +47,8 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            color_theme: "dark".into(),
+            launch_at_login: true,
             retention_days: Some(30),
             excluded_apps: vec![
                 "1Password.exe".into(),
@@ -142,6 +160,9 @@ impl SettingsService {
 }
 
 fn normalize(mut settings: AppSettings) -> AppSettings {
+    if settings.color_theme != "light" {
+        settings.color_theme = "dark".into();
+    }
     settings.retention_days = match settings.retention_days {
         Some(7 | 14 | 30) => settings.retention_days,
         // Migrate the removed 90-day choice to the longest remaining finite
@@ -213,6 +234,8 @@ mod tests {
         assert_eq!(settings.text_scale, DEFAULT_TEXT_SCALE);
         assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
         assert!(!settings.hermes_enabled);
+        assert!(settings.launch_at_login);
+        assert_eq!(settings.color_theme, "dark");
     }
 
     #[test]
@@ -222,6 +245,8 @@ mod tests {
         let service = SettingsService::initialize(&path).unwrap();
         let updated = service
             .update(AppSettings {
+                color_theme: "light".into(),
+                launch_at_login: false,
                 retention_days: Some(14),
                 excluded_apps: vec![" Bitwarden.exe ".into(), "bitwarden.exe".into()],
                 sensitive_filter_enabled: false,
@@ -232,7 +257,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(updated.retention_days, Some(14));
+        assert_eq!(updated.color_theme, "light");
         assert!(updated.hermes_enabled);
+        assert!(!updated.launch_at_login);
         assert_eq!(
             updated.excluded_apps,
             vec!["1Password.exe", "Bitwarden.exe"]
@@ -272,6 +299,8 @@ mod tests {
         let service = SettingsService::initialize(&path).unwrap();
 
         assert_eq!(service.get().unwrap().text_scale, DEFAULT_TEXT_SCALE);
+        assert!(service.get().unwrap().launch_at_login);
+        assert_eq!(service.get().unwrap().color_theme, "dark");
         assert_eq!(service.get().unwrap().hotkey, DEFAULT_HOTKEY);
     }
 

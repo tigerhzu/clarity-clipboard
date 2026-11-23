@@ -1,6 +1,6 @@
 [package]
 name = "clarity-clipboard"
-version = "1.0.14"
+version = "1.0.18"
 description = "A local-first Windows clipboard workspace"
 authors = ["Tiger Hsu"]
 license = "MIT"
@@ -31,8 +31,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_Threading",
+    "Win32_System_Registry",
     "Win32_UI_WindowsAndMessaging",
 ] }
+rust_xlsxwriter = "0.102"
+zip = { version = "9.6", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = "3"

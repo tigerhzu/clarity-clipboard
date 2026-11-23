@@ -182,7 +182,12 @@ fn call_tool(services: &ToolServices, name: &str, args: &Value) -> Result<Value,
     let id = string(args, "id", "");
     let value = match name {
         "clarity_status" => json!({"connected":true,"enabled":true,"app":"剪貼後台",
-            "version":env!("CARGO_PKG_VERSION"),"scope":"current Windows user on this computer","toolCount":9}),
+            "version":env!("CARGO_PKG_VERSION"),"scope":"current Windows user on this computer","toolCount":tool_list().as_array().map(Vec::len)}),
+        "clarity_export_csv" | "clarity_export_excel" => {
+            let options =
+                serde_json::from_value(args.clone()).map_err(|e| format!("匯出參數錯誤：{e}"))?;
+            json!(services.export.export(options)?)
+        }
         "clarity_search" => {
             let query = string(args, "query", "");
             let limit = args["limit"].as_u64().unwrap_or(20) as usize;
@@ -360,6 +365,9 @@ pub(super) mod tests {
         let changes = Arc::new(AtomicUsize::new(0));
         let changed = changes.clone();
         let services = ToolServices {
+            export: crate::services::export_service::ExportService::new(
+                directory.path().to_path_buf(),
+            ),
             repository: repository.clone(),
             clipboard: ClipboardService::new(
                 repository.clone(),
@@ -592,5 +600,28 @@ pub(super) mod tests {
             handle_rpc(&services, &json!([])).unwrap()["error"]["code"],
             -32600
         );
+    }
+
+    #[test]
+    fn export_tool_returns_paths_without_sending_private_content() {
+        let (directory, services, _) = setup();
+        call(
+            &services,
+            "clarity_save_item",
+            json!({"storage":"history", "title":"本機匯出", "content":"local private content"}),
+        );
+        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let result = call(
+            &services,
+            "clarity_export_excel",
+            json!({"startDate":date,"endDate":date,"outputDirectory":directory.path().join("exports").to_string_lossy()}),
+        );
+        assert_eq!(result["itemCount"], 1);
+        assert_eq!(result["sheetCount"], 2);
+        assert!(std::path::Path::new(result["xlsxPath"].as_str().unwrap()).exists());
+        assert!(!result.to_string().contains("local private content"));
+        assert!(std::fs::read_to_string(result["csvPath"].as_str().unwrap())
+            .unwrap()
+            .contains("local private content"));
     }
 }

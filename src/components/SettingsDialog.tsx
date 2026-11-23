@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Bot, Check, Clock3, Keyboard, LoaderCircle, Lock, Monitor, RefreshCw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
+import { Bot, Check, Clock3, Download, Keyboard, LoaderCircle, Lock, Monitor, RefreshCw, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { getClipboardSettings, updateClipboardSettings } from "../lib/clipboard-api";
 import type { ClipboardSettings, ClipboardTextScale } from "../types/clipboard";
 import { DEFAULT_GLOBAL_HOTKEY, formatHotkey, hotkeyFromKeyboardEvent } from "../lib/hotkey";
 import "./dialogs.css";
 import { HermesSettings } from "./HermesSettings";
+import { ExportSettings } from "./ExportSettings";
 
 interface SettingsDialogProps {
   onClose: () => void;
@@ -13,6 +14,7 @@ interface SettingsDialogProps {
 const sections = [
   { id: "general", label: "一般", icon: SlidersHorizontal },
   { id: "storage", label: "儲存", icon: Clock3 },
+  { id: "export", label: "匯出", icon: Download },
   { id: "privacy", label: "隱私", icon: ShieldCheck },
   { id: "hermes", label: "Hermes", icon: Bot },
 ] as const;
@@ -54,7 +56,7 @@ function parseExcludedDraft(value: string) {
 }
 
 function serializeSettings(settings: ClipboardSettings) {
-  return JSON.stringify({ retentionDays: settings.retentionDays, sensitiveFilterEnabled: settings.sensitiveFilterEnabled,
+  return JSON.stringify({ colorTheme: settings.colorTheme, launchAtLogin: settings.launchAtLogin, retentionDays: settings.retentionDays, sensitiveFilterEnabled: settings.sensitiveFilterEnabled,
     excludedApps: settings.excludedApps, textScale: settings.textScale, hotkey: settings.hotkey, hermesEnabled: settings.hermesEnabled });
 }
 export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
@@ -65,6 +67,7 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = useState<(typeof sections)[number]["id"]>("general");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [recordingHotkey, setRecordingHotkey] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +80,7 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
     setLoading(true); setError(null);
     try {
       const value = await getClipboardSettings();
-      const normalized = { ...value, hermesEnabled: value.hermesEnabled ?? false, excludedApps: normalizeExcludedApps(value.excludedApps) };
+      const normalized = { ...value, colorTheme: value.colorTheme ?? "dark", launchAtLogin: value.launchAtLogin ?? true, hermesEnabled: value.hermesEnabled ?? false, excludedApps: normalizeExcludedApps(value.excludedApps) };
       setSavedHermesEnabled(normalized.hermesEnabled);
       setSettings(normalized); setExcludedDraft(editableExcludedApps(normalized.excludedApps).join("\n"));
       setInitialSnapshot(serializeSettings(normalized));
@@ -93,11 +96,11 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
   useEffect(() => { if (confirmingClose) continueButton.current?.focus(); }, [confirmingClose]);
   const dirty = useMemo(() => Boolean(settings && initialSnapshot && serializeSettings(settings) !== initialSnapshot), [initialSnapshot, settings]);
   const requestClose = useCallback(() => {
-    if (saving) return;
+    if (saving || exporting) return;
     if (confirmingClose) { setConfirmingClose(false); closeButton.current?.focus(); return; }
     if (dirty) { setRecordingHotkey(false); setConfirmingClose(true); return; }
     onClose();
-  }, [confirmingClose, dirty, onClose, saving]);
+  }, [confirmingClose, dirty, onClose, saving, exporting]);
   const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     event.stopPropagation();
     if (event.key === "Escape") { event.preventDefault(); requestClose(); return; }
@@ -121,11 +124,11 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
     setSettings({ ...settings, hotkey: nextHotkey }); setRecordingHotkey(false); setError(null);
   };
   const save = async () => {
-    if (!settings || saving || !dirty) return;
+    if (!settings || saving || exporting || !dirty) return;
     if (settings.excludedApps.length > 100) { setActiveSection("privacy"); setError("最多可排除 100 個應用程式，請減少清單後再儲存。"); return; }
     setSaving(true); setRecordingHotkey(false); setError(null); dialog.current?.focus();
     try { const savedSettings = await updateClipboardSettings(settings); onSaved(savedSettings); onClose(); }
-    catch { setError("設定儲存失敗，變更仍保留在這裡，請再試一次。"); }
+    catch (error) { setError(`設定儲存失敗：${String(error)}。變更仍保留在這裡，請再試一次。`); }
     finally { setSaving(false); }
   };
   return (
@@ -134,16 +137,16 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
         aria-describedby="settings-description" aria-busy={loading || saving} tabIndex={-1} onKeyDown={handleDialogKeyDown}>
         <header className="cc-modal-header">
           <div><span className="cc-modal-eyebrow">你的工作空間</span><h2 id="settings-title">{confirmingClose ? "捨棄變更？" : "設定"}</h2></div>
-          <button ref={closeButton} type="button" className="cc-dialog-close" onClick={requestClose} disabled={saving} aria-label={confirmingClose ? "繼續編輯" : "關閉設定"} title="關閉（Esc）"><X size={18} /></button>
+          <button ref={closeButton} type="button" className="cc-dialog-close" onClick={requestClose} disabled={saving || exporting} aria-label={confirmingClose ? "繼續編輯" : "關閉設定"} title="關閉（Esc）"><X size={18} /></button>
         </header>
         {confirmingClose ? (
           <div className="cc-modal-body cc-discard-body"><p id="settings-description">尚未儲存的設定將會還原。你也可以回到設定繼續編輯。</p></div>
         ) : <>
-          <p id="settings-description" className="cc-sr-only">調整顯示、快捷鍵、歷史保留期限、隱私與 Hermes 串接。</p>
+          <p id="settings-description" className="cc-sr-only">調整登入啟動、顯示、快捷鍵、歷史保留期限、匯出、隱私與 Hermes 串接。</p>
           <div className="cc-settings-tabs" role="tablist" aria-label="設定分類">
             {sections.map(({ id, label, icon: Icon }, index) => (
               <button key={id} id={`settings-tab-${id}`} type="button" role="tab" aria-selected={activeSection === id}
-                aria-controls={`settings-panel-${id}`} tabIndex={activeSection === id ? 0 : -1} disabled={saving}
+                aria-controls={`settings-panel-${id}`} tabIndex={activeSection === id ? 0 : -1} disabled={saving || exporting}
                 onClick={() => { setActiveSection(id); setRecordingHotkey(false); }} onKeyDown={(event) => {
                   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
                   event.preventDefault();
@@ -158,7 +161,13 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
             {!loading && settings && (
               <fieldset className="cc-settings-fields" disabled={saving} role="tabpanel" id={`settings-panel-${activeSection}`} aria-labelledby={`settings-tab-${activeSection}`}>
                 {activeSection === "general" && <>
+                  <label className="cc-setting-row cc-toggle-row"><span><strong>登入 Windows 時自動啟動</strong><small>登入後在通知區持續記錄，不彈出主視窗</small></span><input type="checkbox" className="cc-switch" role="switch" checked={settings.launchAtLogin} onChange={(event) => setSettings({ ...settings, launchAtLogin: event.target.checked })} /></label>
                   <div className="cc-setting-heading"><Monitor size={18} /><div><h3>閱讀與顯示</h3><p>讓文字和操作介面保持舒適。</p></div></div>
+                  <label className="cc-setting-row"><span><strong>介面配色</strong><small>預設使用舊版黑底；儲存後套用</small></span>
+                    <select value={settings.colorTheme} onChange={(event) => setSettings({ ...settings, colorTheme: event.target.value === "light" ? "light" : "dark" })}>
+                      <option value="dark">經典黑（預設）</option><option value="light">淺色玻璃</option>
+                    </select>
+                  </label>
                   <label className="cc-setting-row"><span><strong>介面比例</strong><small>同時調整文字與控制項大小</small></span>
                     <select value={settings.textScale} onChange={(event) => setSettings({ ...settings, textScale: Number(event.target.value) as ClipboardTextScale })}>
                       <option value={100}>標準</option><option value={120}>舒適</option><option value={150}>大字</option>
@@ -197,6 +206,7 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
                   <p id="excluded-apps-help" className="cc-field-help">1Password.exe 會固定排除；其餘每行一個應用程式或執行檔名稱。從這些程式複製的內容不會加入歷史。</p>
                 </>}
                 {activeSection === "hermes" && <HermesSettings enabled={settings.hermesEnabled} savedEnabled={savedHermesEnabled} onChange={(hermesEnabled) => setSettings({ ...settings, hermesEnabled })} />}
+                {activeSection === "export" && <ExportSettings busy={exporting} onBusy={setExporting} />}
               </fieldset>
             )}
             {!loading && error && <div className="cc-dialog-error" role="alert"><p>{error}</p>{!settings && <button className="cc-dialog-secondary" type="button" onClick={() => void load()}><RefreshCw size={14} />重新讀取</button>}</div>}
@@ -205,7 +215,7 @@ export function SettingsDialog({ onClose, onSaved }: SettingsDialogProps) {
         <footer className="cc-modal-footer">
           {confirmingClose ? <><span /><div className="cc-dialog-actions"><button ref={continueButton} type="button" className="cc-dialog-secondary" onClick={() => { setConfirmingClose(false); closeButton.current?.focus(); }}>繼續編輯</button><button type="button" className="cc-dialog-danger" onClick={onClose}>捨棄變更</button></div></> : <>
             <span className={dirty ? "cc-dialog-status is-dirty" : "cc-dialog-status"}>{saving ? "正在儲存…" : dirty ? "有未儲存的變更" : "僅儲存於這台電腦"}</span>
-            <div className="cc-dialog-actions"><button type="button" className="cc-dialog-secondary" onClick={requestClose} disabled={saving}>取消</button><button type="button" className="cc-dialog-primary" disabled={!settings || saving || !dirty} onClick={() => void save()}>{saving && <LoaderCircle size={14} className="cc-dialog-spinner" />}{saving ? "儲存中…" : "儲存設定"}</button></div>
+            <div className="cc-dialog-actions"><button type="button" className="cc-dialog-secondary" onClick={requestClose} disabled={saving || exporting}>取消</button><button type="button" className="cc-dialog-primary" disabled={!settings || saving || exporting || !dirty} onClick={() => void save()}>{saving && <LoaderCircle size={14} className="cc-dialog-spinner" />}{saving ? "儲存中…" : "儲存設定"}</button></div>
           </>}
         </footer>
       </section>

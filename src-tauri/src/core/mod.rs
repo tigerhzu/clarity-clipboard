@@ -1,3 +1,4 @@
+pub mod autostart;
 pub mod classifier;
 pub mod clipboard_monitor;
 #[cfg(windows)]

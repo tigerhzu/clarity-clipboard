@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Clarity 合成資料驗證</title></head><body><div id="root"></div><script type="module">
+import { createFixture, installTauriFixture } from './fixtures.mjs';
+installTauriFixture({ fixture: createFixture(), persist: false });
+await import('/src/main.tsx');
+</script></body></html>

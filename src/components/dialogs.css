@@ -22,12 +22,12 @@
 .cc-dialog-status.is-dirty { color: var(--warning); }
 .cc-modal .cc-dialog-primary, .cc-modal .cc-dialog-secondary, .cc-modal .cc-dialog-danger, .cc-modal .cc-dialog-tertiary { min-height: 36px; padding: 7px 13px; border: 1px solid transparent; border-radius: 8px; font-size: var(--font-md, 13px); font-weight: 600; line-height: 1.35; white-space: nowrap; }
 .cc-modal .cc-dialog-primary { color: var(--action-ink); background: var(--action-bg); border-color: var(--action-bg); }
-.cc-modal .cc-dialog-primary:hover:not(:disabled) { background: #eeedff; border-color: #eeedff; }
+.cc-modal .cc-dialog-primary:hover:not(:disabled) { background: var(--action-hover); border-color: var(--action-hover); }
 .cc-modal .cc-dialog-secondary { color: var(--dialog-ink); border-color: var(--dialog-line); background: var(--surface); }
 .cc-modal .cc-dialog-secondary:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--line); }
 .cc-modal .cc-dialog-tertiary { color: var(--dialog-muted); border-color: transparent; background: transparent; padding-inline: 8px; }
 .cc-modal .cc-dialog-tertiary:hover:not(:disabled) { color: var(--dialog-primary); background: var(--accent-soft); }
-.cc-modal .cc-dialog-danger { color: var(--ink); background: #9b425b; border-color: #9b425b; }
+.cc-modal .cc-dialog-danger { color: white; background: #9b425b; border-color: #9b425b; }
 .cc-modal .cc-dialog-danger:hover:not(:disabled) { background: #b64e6a; }
 .cc-dialog-intro { color: var(--dialog-muted); font-size: var(--font-md, 13px); margin-bottom: 20px !important; }
 .cc-dialog-field { display: flex; flex-direction: column; min-width: 0; gap: 7px; }
@@ -35,7 +35,7 @@
 .cc-dialog-field small { color: var(--dialog-muted); font-size: var(--font-xs, 11px); font-weight: 400; }
 .cc-modal input:not([type="checkbox"]), .cc-modal select, .cc-modal textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; color: var(--dialog-ink); background: var(--surface-raised); padding: 9px 11px; font-size: var(--font-md, 13px); line-height: 1.5; }
 .cc-modal input:not([type="checkbox"]), .cc-modal select { min-height: 38px; }
-.cc-modal select { color-scheme: dark; }
+.cc-modal select { color-scheme: inherit; }
 .cc-modal textarea { resize: vertical; min-height: 100px; max-height: 320px; }
 .cc-modal textarea[data-code="true"] { font-family: "Cascadia Code", Consolas, monospace; }
 .cc-modal input::placeholder, .cc-modal textarea::placeholder { color: var(--muted); opacity: 1; }

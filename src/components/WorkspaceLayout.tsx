@@ -4,6 +4,8 @@ type Divider = "sidebar" | "history";
 interface Preferences { sidebar: number | null; ratio: number }
 const STORAGE_KEY = "clarity-clipboard:column-widths:v1";
 const defaults: Preferences = { sidebar: null, ratio: 0.44 };
+// Preserve 340px of usable preview width plus the glass panel's 24px gutters.
+const previewMinimum = 364;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 function readPreferences(): Preferences {
@@ -24,10 +26,10 @@ export function useWorkspaceLayout() {
   preferencesRef.current = preferences;
   const [resizing, setResizing] = useState<Divider | null>(null);
   const drag = useRef<{ pointerId: number; target: HTMLElement; x: number; start: number; divider: Divider; original: Preferences } | null>(null);
-  const sidebarMax = Math.max(180, width - 640);
+  const sidebarMax = Math.max(180, width - 300 - previewMinimum);
   const sidebar = clamp(preferences.sidebar ?? (width <= 1060 ? 180 : 196), 180, sidebarMax);
   const available = width - sidebar;
-  const historyMax = Math.max(300, available - 340);
+  const historyMax = Math.max(300, available - previewMinimum);
   const history = clamp(available * preferences.ratio, 300, historyMax);
   const metrics = useRef({ sidebar, available, history, sidebarMax, historyMax });
   metrics.current = { sidebar, available, history, sidebarMax, historyMax };

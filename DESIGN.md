@@ -2,37 +2,66 @@
 
 ## Product direction
 
-A quiet space for copied things. The primary task is to find something, read it,
-and copy it again. At the user's request, black is now the dominant UI color.
-Near-black surface layers, silver text, quiet violet selection and a few static
-stars give the workspace a restrained deep-space character. The main action is
-silver-lavender with dark ink. There are no external fonts, remote thumbnails,
-or network dependencies in the interface.
-
-The vendored
-Raycast and Linear references inform compact controls, keyboard affordances,
-restrained borders and clear hierarchy; their palettes and layouts are not the
-product specification.
+A quiet space for copied things. Find something, read it, and copy it again.
+Classic dark is the default: near-black surfaces, quiet lavender focus and
+selection, and light gray text retain the original palette. Settings → General
+lets the user select Classic Dark or Light Glass; saving persists the choice
+and updates both the workspace and native title bar. Missing/invalid legacy
+preferences fall back to dark. Cancel leaves the saved theme unchanged.
+The optional November 13 HaloPSA glass theme retains its ocean wash,
+translucent cards, white edges and restrained orange accent.
+No external fonts, remote images or runtime network dependencies are required.
 
 ## Tokens
 
+### Classic dark (default)
+
 | Purpose | Value |
 | --- | --- |
-| Canvas | `#08090d` |
-| Reading surface | `#0d0f16` |
-| History | `#101219` |
-| Navigation | `#07080c` |
-| Raised surface / hover | `#181b25` / `#202431` |
-| Primary / body ink | `#eceef6` / `#c6cbd9` |
-| Secondary ink | `#a0a7b9` |
-| Accent / hover | `#b3adff` / `#d0cdff` |
-| Selection | `#25273f`, 3px violet leading indicator |
-| Main action background / ink | `#d8d6ff` / `#151421` |
-| Hairline / strong line | `#282c39` / `#444b61`, 1px |
-| Focus | `#b3adff`, 2px outline, 3px offset |
-| Destructive | `#ffabb4`, dark `#351e29` surface |
-| Code surface | `#090c13` |
-| Overlay | near-black at 72% opacity; 93% for image lightbox |
+| Canvas / surface / history / navigation | `#08090d` / `#0d0f16` / `#101219` / `#07080c` |
+| Raised / hover | `#181b25` / `#202431` |
+| Ink / body / secondary | `#eceef6` / `#c6cbd9` / `#a0a7b9` |
+| Line / strong line | `#282c39` / `#444b61` |
+| Accent / hover / focus | `#b3adff` / `#d0cdff` / `#b3adff` |
+| Selection fill | `#25273f` |
+| Main action / ink | `#d8d6ff` / `#151421` |
+| Danger / danger fill / warning | `#ffabb4` / `#351e29` / `#e2c187` |
+| Code | `#090c13` |
+
+Base styles own this palette. The complete light material stylesheet is
+disabled in dark mode, including light-only shadows, backgrounds and overlays.
+
+### Light glass (optional)
+
+| Purpose | Value |
+| --- | --- |
+| Canvas | `#edf3fa` |
+| Ocean wash | `#38bdf8`, `#3b82f6`, `#22d3ee`, `#818cf8` at 42% alpha |
+| Card tint | white at 55% alpha, 115deg white specular sheen |
+| Reading panel | white at 72% alpha |
+| Modal / menu sheet | `#fafcff` at 96% alpha |
+| Raised surface / hover | `#eff3f8` / `#e5ebf3` |
+| Primary / body ink | `#1b293d` / `#35465c` |
+| Secondary ink | `#516078` |
+| Accent text / hover | `#a34308` / `#853504` |
+| Selection | `#ffeadb`, orange leading indicator and dark orange hairline |
+| Main action background / hover / ink | `#ff7a1a` / `#ff8d3b` / `#311706` |
+| Hairline / strong line | navy at 13% alpha / `#8090a6`, 1px |
+| Glass edge | white at 80% alpha; inset top edge white at 95% |
+| Focus | `#a34308`, 2px outline, 3px offset (rows inset 2px) |
+| Destructive | `#ad2343` on `#ffebef` |
+| Warning | `#855109` on `#fff3dc` |
+| Code surface | `#f1f5fa` |
+| Syntax comment / string / keyword / number | `#596b80` / `#17645e` / `#6540a1` / `#93500e` |
+| Overlay | navy at 24% alpha with 4px blur; image lightbox remains dark |
+| Card shadow | `0 3px 10px rgb(28 50 80 / 7%)` |
+| Sheet shadow | `0 18px 48px rgb(28 50 80 / 16%)`, `0 3px 10px rgb(28 50 80 / 8%)` |
+
+The orange fill follows HaloPSA's `#ff7a1a`; small text and keyboard focus use a
+darker orange for contrast. Glass strength/opacity are shared CSS tokens rather
+than new persisted preferences. All material rules live in `src/app/glass.css`,
+enabled only for the light preference after component styles. Dark defaults
+live in `src/app/styles.css`; theme changes do not alter layout or content.
 
 Typography uses Segoe UI Variable Text, Segoe UI, Microsoft JhengHei UI and
 Microsoft JhengHei. Code uses Consolas/Cascadia Code. Body weight is 400,
@@ -47,30 +76,38 @@ labels that are not needed to understand the application.
 | 150 | 14 | 15 | 17 | 20 | 27 |
 
 These are optical text sizes in pixels. Text scales without enlarging the
-entire window. Spacing follows 4/8/12/16/20/24/32px. Radius: 4px keycaps and
-badges; 6px icon controls; 8px fields/buttons/rows; 10px content cards/popovers;
-16px dialogs. Panels remain flat. Only popovers, dialogs and toasts have a
-soft shadow. Scrollbars are 7px with a 2px transparent thumb inset, using the
-strong-line token throughout. Native selects use color-scheme: dark. Every
-component color references the central tokens in styles.css. The bundled
-orbital-stars.svg is an inert, static decoration on navigation only; a small
-orbit accompanies the empty preview. Decoration never animates or covers text.
+entire window. Spacing follows 4/8/12/16/20/24/32px. Radius: 4px keycaps;
+6px badges; 8–10px controls; 11px navigation tiles; 13px history cards;
+18px preview; 20px dialogs. History cards have 7px vertical separation.
+Scrollbars are 7px with a 2px transparent thumb inset, using the strong-line
+token. Native selects inherit the selected color scheme. The old navigation stars are
+replaced by the continuous ocean background; empty previews retain the quiet
+paper illustration.
+
+In light mode the shell owns the four static radial gradients. Navigation, search strips,
+calendar strip and history wrappers stay transparent so the background does
+not restart at column boundaries. Rows use translucent fills, inset highlights
+and small shadows, without per-row backdrop filters. Menus and dialogs use
+22px blur with 145% saturation and near-opaque sheets. No animated blur,
+background-position, pointer-following light or permanent will-change layers.
+Reduced transparency disables the wash and blur and uses solid cards. Without
+backdrop-filter support, sheets become opaque. Forced colors retain explicit
+selection outlines. Reduced motion follows the global motion rule.
 
 ## Layout and interaction
 
 The desktop grid defaults to a 196px full-height navigation rail and two flexible
 content columns (history 0.88fr; preview 1.12fr). Two vertical separators resize
 navigation and history/preview horizontally. Their 10px pointer targets overlay
-the boundary without consuming column width; a 2px hairline turns accent on
+the boundary without consuming column width; a quiet 1px hairline becomes 2px and accent on
 hover, focus or drag. Navigation is at least 180px and can expand until only the
-content minimums remain; history is at least 300px, and preview at least 340px.
+content minimums remain; history is at least 300px, and preview at least 340px. Its grid slot reserves 364px including up to 24px of horizontal gutters.
 Smaller windows clamp visible widths without
 overwriting the saved preference. Persist navigation pixels and the content split
 ratio locally. Arrow keys adjust 10px (Shift 40px), Home/End choose limits,
 double-click or Enter resets that separator, and Escape/blur cancels a drag.
 The 84px topbar spans both
-content columns, and the history/preview surfaces begin directly below it so
-the reading area keeps the full available height. Navigation contains recent
+content columns, and the history/preview surfaces begin directly below it with a small inset around the reading panel. Navigation contains recent
 clips, pins, personal snippets, folders, settings, and a compact category
 section in the lower rail. The nine content categories are always visible as a
 dense, icon-led list; the time range remains a separate select control. Type/date
@@ -111,7 +148,7 @@ and large text sizes. Date boundaries use local midnight, including DST days.
 
 History rows have a type icon or real image thumbnail, a two-line excerpt,
 source/type/time metadata, and a pin indicator. Row height is at least 86px.
-Day labels preserve backend result order. A click selects; double click or
+Each row is an independent glass card; selected rows retain the orange tint on hover. Day labels preserve backend result order. A click selects; double click or
 Enter copies. Arrow keys move selection and scroll the selected row into view.
 Loading, empty, search-empty and retryable error states occupy the same area.
 Explicit pagination preserves access to records beyond the first 250.
@@ -153,6 +190,16 @@ sensitive-content filtering. In Privacy, `1Password.exe` is a protected exclusio
 shown as a locked row outside the editable list; all other exclusions remain
 editable. Save persists the complete object. Cancellation does not save. Errors retain the draft and offer retry. The first-run guide is
 one dismissible page with optional access to the same settings form.
+
+General settings include a default-on Windows login startup switch using the
+normal draft/save/cancel flow. Startup stays in the tray without raising a window.
+The Export tab uses the existing labeled controls and scrolling body: inclusive
+local start/end dates in two columns, storage scope, optional exact tag and output
+directory. Export runs independently of saving preferences. During export, disable
+navigation and closing; preserve inputs on errors. Show counts, selectable output
+path, explicit empty results and expandable missing-image warnings after completion.
+CSV includes image paths with original files alongside; explain rule-based type
+tags and local processing without AI in the form.
 
 The Hermes tab has a default-off read/write switch, a labeled read-only setup
 prompt and a compact copy action with pending/success/error feedback. The switch

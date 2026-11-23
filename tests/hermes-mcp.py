@@ -103,7 +103,7 @@ try:
     assert init['result']['protocolVersion'] == '2025-06-18'
     client.process.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
     client.process.stdin.flush()
-    assert len(client.request('tools/list')['result']['tools']) == 9
+    assert len(client.request('tools/list')['result']['tools']) == 11
     status = client.value('clarity_status')
     assert status['connected'] is True
     assert status['version'] == '1.0.14'

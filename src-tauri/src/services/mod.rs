@@ -1,5 +1,6 @@
 pub mod cleanup_service;
 pub mod clipboard_service;
+pub mod export_service;
 pub mod image_service;
 pub mod library_service;
 pub mod privacy_service;

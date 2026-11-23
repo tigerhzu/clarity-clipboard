@@ -1,0 +1,7 @@
+.cc-export, .cc-export-fields, .cc-export-result { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cc-export-fields { border: 0; margin: 0; padding: 0; }
+.cc-export-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cc-export input { width: 100%; min-width: 0; box-sizing: border-box; }
+.cc-export-fields > button { align-self: flex-start; }
+.cc-export-result { padding: 12px; background: var(--surface-raised); border-radius: 8px; overflow-wrap: anywhere; font-size: var(--font-sm); }
+.cc-export-result ul { padding-left: 18px; }

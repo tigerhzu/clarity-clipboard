@@ -102,13 +102,18 @@ pub fn get_clipboard_settings(service: State<'_, SettingsService>) -> Result<App
 
 #[tauri::command]
 pub fn update_clipboard_settings(
+    app: tauri::AppHandle,
     service: State<'_, SettingsService>,
     cleanup: State<'_, CleanupService>,
     settings: AppSettings,
 ) -> Result<AppSettings, String> {
-    let settings = service
-        .update(settings)
-        .map_err(|error| error.to_string())?;
+    let previous = service.get().map_err(|error| error.to_string())?;
+    crate::core::autostart::sync(&app.config().identifier, settings.launch_at_login)?;
+    let settings = service.update(settings).map_err(|error| {
+        let _ = crate::core::autostart::sync(&app.config().identifier, previous.launch_at_login);
+        error.to_string()
+    })?;
+    crate::services::settings_service::apply_window_theme(&app, &settings.color_theme);
     // Settings are already durable at this point. Cleanup is best-effort so a
     // transient database/file issue does not tell the user that their settings
     // were lost after they were successfully written.

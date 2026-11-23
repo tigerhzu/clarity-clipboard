@@ -27,6 +27,15 @@
   --danger: #ffabb4;
   --danger-soft: #351e29;
   --warning: #e2c187;
+  --action-hover: #eeedff;
+  --code-surface: #090c13;
+  --syntax-comment: #8691a8;
+  --syntax-string: #96c8c7;
+  --syntax-keyword: #bab2ff;
+  --syntax-number: #dec39c;
+  --selection: #3d395f;
+  --action-key-ink: #47465d;
+  --action-key-line: #a9a5cf;
   --font-xs:11px;
   --font-sm:12px;
   --font-md:13px;
@@ -85,7 +94,7 @@ svg {
 
 ::selection {
   color:var(--ink);
-  background:#3d395f;
+  background:var(--selection);
 }
 
 ::-webkit-scrollbar {
@@ -166,10 +175,6 @@ kbd {
   grid-column:1;
   grid-row:1/-1;
   min-height:0;
-  background-image:url("../assets/orbital-stars.svg");
-  background-size:196px 760px;
-  background-position:left bottom;
-  background-repeat:no-repeat;
 }
 
 .topbar {
@@ -425,7 +430,7 @@ kbd {
 
 .code-preview {
   border: 1px solid var(--line);
-  background: #090c13;
+  background: var(--code-surface);
   color: var(--ink);
   border-radius:9px;
   overflow:auto;
@@ -457,19 +462,19 @@ kbd {
 }
 
 .syntax-comment {
-  color: #8691a8;
+  color: var(--syntax-comment);
 }
 
 .syntax-string {
-  color: #96c8c7;
+  color: var(--syntax-string);
 }
 
 .syntax-keyword {
-  color: #bab2ff;
+  color: var(--syntax-keyword);
 }
 
 .syntax-number {
-  color: #dec39c;
+  color: var(--syntax-number);
 }
 
 .structured-preview {
@@ -620,12 +625,12 @@ kbd {
 }
 
 .primary-action:hover {
-  background:#eeedff;
+  background:var(--action-hover);
 }
 
 .primary-action kbd {
-  color:#47465d;
-  border-color:#a9a5cf;
+  color:var(--action-key-ink);
+  border-color:var(--action-key-line);
   font-size:var(--font-xs);
   margin-left:auto;
 }
@@ -915,7 +920,7 @@ kbd {
 .image-lightbox-hint {
   position:absolute;
   bottom:20px;
-  color: var(--ink);
+  color: #eceef6;
   font-size:var(--font-sm);
 }
 

@@ -3,6 +3,7 @@ mod core;
 mod database;
 pub mod integration;
 mod services;
+pub use services::export_service::run_cli as run_export_cli;
 
 use database::repository::ClipboardRepository;
 use services::{
@@ -73,12 +74,19 @@ fn toggle_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let context = tauri::generate_context!();
+    let mut context = tauri::generate_context!();
+    let background = std::env::args().any(|arg| arg == "--background");
+    if background {
+        for window in &mut context.config_mut().app.windows {
+            window.visible = false;
+        }
+    }
     #[cfg(windows)]
-    let Some(instance) =
-        core::single_instance::SingleInstance::acquire(&context.config().identifier)
-            .expect("could not initialize the single-instance gate")
-    else {
+    let Some(instance) = core::single_instance::SingleInstance::acquire_with_activation(
+        &context.config().identifier,
+        !background,
+    )
+    .expect("could not initialize the single-instance gate") else {
         return;
     };
     let mut builder = tauri::Builder::default();
@@ -115,6 +123,19 @@ pub fn run() {
             let image_service = ImageService::initialize(data_directory.join("images"))?;
             let settings_service =
                 SettingsService::initialize(data_directory.join("settings.json"))?;
+            services::settings_service::apply_window_theme(
+                app.handle(),
+                &settings_service.get()?.color_theme,
+            );
+            if let Err(error) = core::autostart::sync(
+                &app.config().identifier,
+                settings_service.get()?.launch_at_login,
+            ) {
+                eprintln!("{error}");
+            }
+            app.manage(services::export_service::ExportService::new(
+                data_directory.clone(),
+            ));
             let privacy_service = PrivacyService::new(settings_service.clone());
             let clipboard_service =
                 ClipboardService::new(repository.clone(), image_service.clone(), privacy_service);
@@ -181,6 +202,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            services::export_service::export_clipboard_csv,
+            services::export_service::get_export_directory,
             integration::get_hermes_integration,
             integration::copy_hermes_prompt,
             commands::library::save_manual_item,

@@ -1,23 +1,58 @@
 # Windows Release 指南
 
-**v1.0.14** 的兩個 Windows x64 安裝器與 SHA-256 校驗清單可從 [GitHub Release](https://github.com/tigerhzu/clarity-clipboard/releases/tag/v1.0.14) 下載。倉庫保存對應的原始碼、圖示與建置腳本。
+**v1.0.18** 的 Windows x64 安裝器、Excel 範例與 SHA-256 校驗清單可從 [GitHub Release](https://github.com/tigerhzu/clarity-clipboard/releases/tag/v1.0.18) 下載。倉庫保存對應的原始碼、圖示與建置腳本。
 
 ## 使用者下載
 
 在 [Releases](https://github.com/tigerhzu/clarity-clipboard/releases/latest) 優先下載 `Clarity-Setup.exe`。它包含正式 NSIS 安裝包，使用目前 Windows 使用者的安裝位置，安裝完成後開啟程式。
 
-如需標準安裝精靈，下載 `Clarity-Clipboard-1.0.14-x64-setup.exe`。它與快速安裝器內嵌的 NSIS 檔案具有相同的 SHA-256。
+如需標準安裝精靈，下載 `Clarity-Clipboard-1.0.18-x64-setup.exe`。它與快速安裝器內嵌的 NSIS 檔案具有相同的 SHA-256。
 
 | 檔案 | 用途 |
 | --- | --- |
 | `Clarity-Setup.exe` | 推薦的一鍵快速安裝器 |
-| `Clarity-Clipboard-1.0.14-x64-setup.exe` | 標準 NSIS 安裝精靈 |
+| `Clarity-Clipboard-1.0.18-x64-setup.exe` | 標準 NSIS 安裝精靈 |
+| `Clarity-Excel-Date-Overview-Sample.xlsx` | 含合成資料與內嵌圖片的日期篩選範例 |
 | `SHA256SUMS.txt` | 核對下載檔案完整性 |
 | `Source code (zip/tar.gz)` | GitHub 根據 tag 自動產生的原始碼封存 |
 
 WebView2 缺少時安裝程式會下載執行環境，因此首次安裝可能需要網路。沒有憑證簽章的安裝器可能顯示未知發行者；檔案雜湊確認完整性，不代表程式有數位簽章。
 
 ## 維護者建置流程
+
+### 1.0.18 本機驗證 · 2026-11-16
+
+- NSIS 與快速安裝器已產生，內嵌安裝包驗證通過；正式執行檔與 PowerShell 腳本通過日期總覽、類型分頁、舊參數相容、圖片、唯讀資料庫與錯誤輸入測試。
+
+- 52 項 Rust 測試通過，涵蓋第一頁日期篩選、類型分頁保留、跨午夜邊界、內嵌圖片及所有分頁無凍結。
+- TypeScript、Vite 正式建置與 Rust 格式檢查通過；六組設定／匯出介面測試通過。
+- 以獨立、隱藏的 Excel 程序唯讀開啟合成範例，實際驗證日期篩選、圖片隨列隱藏／還原、分類分頁不受影響與無凍結；未擷取螢幕。
+- 此次本機驗證未執行實際覆蓋安裝或登出登入測試。
+
+### 1.0.17 本機驗證 · 2026-11-16
+
+- 52 項 Rust 測試通過，包含暖色底色、取消欄位篩選、依本機日期混合類型分頁、跨午夜邊界及圖片保留。
+- TypeScript、Vite 正式建置及 Rust 格式檢查通過。
+- 新增 CLI／腳本 group-by 選項；維持既有未指定分組時的依類型輸出。
+- 六組介面測試通過；正式執行檔的日期／類型分組、舊 CLI 相容性、參數錯誤、圖片、唯讀資料庫與 PowerShell 腳本驗證通過。
+- 未執行實際覆蓋安裝／登出登入測試，未發布至 GitHub。
+
+### 1.0.16 本機驗證 · 2026-11-16
+
+- TypeScript 與 Vite 正式建置、Rust 格式檢查通過；51 項 Rust 測試通過，涵蓋 XLSX 分頁、分類色、內嵌原圖、公式文字保護、完整長文及損壞圖片。
+- 黑／淺色主題儲存、捨棄、重載與匯出操作在兩種視窗尺寸、三種字體比例共 6 組測試通過，另用瀏覽器工具檢查外觀。
+- 原生 Excel/CSV CLI、中文 JSON 路徑、圖片、唯讀資料庫、空結果及 PowerShell 腳本已以隔離 APPDATA 合成資料驗證。
+- 匯出完成使用最後寫入的 manifest status=complete，避免同步資料夾重新命名被鎖而失敗。
+- 未執行實際覆蓋安裝／登出登入測試，未發布至 GitHub。
+
+### 1.0.15 本機驗證 · 2026-11-16
+
+- TypeScript 與 Vite 正式建置、Rust 格式檢查通過；49 項 Rust 測試全數通過。
+- 登入啟動／匯出設定在 1180×760、900×600，各 100／120／150 文字比例共 6 組互動與尺寸測試通過。以瀏覽器工具直接檢查桌面視覺；未使用 PowerShell 擷取螢幕。
+- 原生 `--export-csv` 與 PowerShell 腳本以隔離 APPDATA 合成資料驗證成功，涵蓋中文 CSV、圖片內容、JSON、空結果、參數錯誤及資料庫唯讀性。
+- NSIS 與快速安裝器已產生，快速安裝器內嵌資源驗證通過。尚未執行實際安裝／登出登入測試，未發布至 GitHub。
+
+### 建置步驟
 
 1. 確認 `package.json`、`Cargo.toml`、`tauri.conf.json` 的版本相同，鎖定檔與原始碼已準備好。
 2. 執行 [開發指南](DEVELOPMENT.md) 的型別、Rust、Playwright 驗證。
@@ -34,11 +69,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/package-quick-in
 src-tauri/target/release/
 ├── clarity-clipboard.exe
 └── bundle/nsis/
-    ├── 剪貼後台_1.0.14_x64-setup.exe
+    ├── 剪貼後台_1.0.18_x64-setup.exe
     └── Clarity-Setup.exe
 ```
 
-發行至 GitHub Release 時，標準安裝器改用英文下載檔名 `Clarity-Clipboard-1.0.14-x64-setup.exe`，檔案內容不變；本機建置產物仍保留上列中文檔名。
+發行至 GitHub Release 時，將標準安裝器複製成英文下載檔名 `Clarity-Clipboard-1.0.18-x64-setup.exe`。
 
 一般使用者應下載安裝器，避免直接散發應用程式執行檔而遺漏安裝生命週期。快速安裝器使用 Windows .NET Framework C# 編譯器，將 NSIS 作為 assembly resource 內嵌；產生時會自動執行 `--verify-payload`。
 

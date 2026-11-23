@@ -14,6 +14,7 @@ pub const PROMPT: &str = include_str!("hermes-prompt.txt");
 
 #[derive(Clone)]
 pub struct ToolServices {
+    export: crate::services::export_service::ExportService,
     repository: ClipboardRepository,
     clipboard: ClipboardService,
     search: SearchService,
@@ -46,6 +47,7 @@ impl HermesIntegration {
         app: tauri::AppHandle,
     ) -> Self {
         let services = ToolServices {
+            export: crate::services::export_service::ExportService::new(directory.to_path_buf()),
             repository,
             clipboard,
             search,
